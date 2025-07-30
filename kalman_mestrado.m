@@ -11,9 +11,13 @@ close all;
     carrierFrequency = 1575.42e6;
     beta = 1/(2*pi*carrierFrequency);
     sequencePeriod = 1e-3;
+    % Shouldn't the sampling frequency be a multiple of 1.023e6, due to the chip rate?
     samplingFrequency = 4e6;
     samplingPeriod = 1/samplingFrequency;
+    % Maybe we should rename this to chipRate. Symbol is often referred to 
+    % as the navigation data bit, which should not be adopted here.
     symbolFrequency = 1.023e6;
+    % chipPeriod?
     symbolPeriod = 1/symbolFrequency;
     numberOfPeriods = 1;
     samplesPerPeriod = samplingFrequency * sequencePeriod;
@@ -107,7 +111,16 @@ changeSignalIntegration = [zeros(15, 1)];
 
 % Covariances
 doppPhaseVariance = pi^2/3;                    % Phase Variance
-doppVariance = 250^2*4*pi^2/3;          % Doppler Variance
+% Doppler Variance
+% NOTE: I think this is too large. Acquisition often give a 
+% frequency estimate with +-25 Hz precision. Assuming the Doppler frequency
+% estimate as a random variable with uniform probability density function 
+% with bounds [a, b], we have that Var[f_D] = (b-a)^2 / 12. Thus, we would
+% have that doppVariance = 50^2 / 12.
+% NOTE: From my experiments with Kaman filter based PLLs, i think that very
+% large initial Doppler frequency shift variances could make the filter to
+% never reach convergence.
+doppVariance = 250^2*4*pi^2/3; 
 doppDriftVariance = 0.02;                 % Doppler Drift Variance
 initDelayDoppCovariance = [
 0.5*symbolPeriod 0 0 0;
@@ -164,7 +177,7 @@ for k = 1 : K
     
         % Signal Acquisition
         if exist('ACQ_DATA_L1E1_GNSSR_2.mat') ~= 2
-
+            Number_Samples_per_Period = samplingFrequency*sequencePeriod;
             [ACQ_DATA, Doppler_Vector, Threshold, Satellites] = ca_acquisition( ...
                 time(1 : Number_Samples_per_Period), ...
                 signal(1 : Number_Samples_per_Period), ...
@@ -172,13 +185,13 @@ for k = 1 : K
                 symbolFrequency, ...
                 1);
 
-             save ACQ_DATA_L1E1_GNSSR_2.mat ACQ_DATA Doppler_Vector Threshold Satellites;
+            save ACQ_DATA_L1E1_GNSSR_2.mat ACQ_DATA Doppler_Vector Threshold Satellites;
         
         else
 
             load ACQ_DATA_L1E1_GNSSR_2.mat;
-            Satellites = sats_found;
-            Doppler_Vector = doppler_bin_vec;
+            %Satellites = sats_found;
+            %Doppler_Vector = doppler_bin_vec;
 
         end
         
@@ -222,6 +235,17 @@ for k = 1 : K
             % Propagation Step
 
             stateAPriori = modelTransitionMatrix * stateVector;
+            % NOTE: I think that it is not necessary to use
+            % `conj(modelTransitionMatrix)` here, given that
+            % `modelTransitionMatrix` would already yield an Hermitian
+            % matrix.
+            % NOTE: Note also that modelTransitionMatrix is completly real,
+            % so it would be sufficient to use `modelTransitionMatrix.'`
+            % here.
+            % NOTE: In general, the Kalman filter is defined for real
+            % numbers. Andreas Iliopoulos, however, adopt a complex Kalman
+            % filter for tracking the channel coefficients for each
+            % multipath signal as complex numbers.
             errorCovarianceAPriori = ...
             modelTransitionMatrix * currentErrorCovariance * conj(modelTransitionMatrix)' ...
             + stateNoiseCovariance;
@@ -240,7 +264,7 @@ for k = 1 : K
             disp(stateDelayAPriori)
             for aux = -numberOfTaps : 1 : numberOfTaps
                 Multi_Correlator = [Multi_Correlator; 
-                reference_signal(sats_found(Satellite), ...
+                reference_signal(Satellites(Satellite), ...
                 stateDelayAPriori + aux*symbolPeriod/numberOfTaps, ...
                 symbolFrequency, ...
                 samplingFrequency, ...
@@ -249,8 +273,8 @@ for k = 1 : K
             measurementNoiseCovariance = Multi_Correlator*Multi_Correlator';
             % Real Measure
             Z = conj(processedSignal) * conj(Multi_Correlator)' / samplesTotal;
-            stem(abs(Z));
-            pause(0.1);
+            % stem(abs(Z));
+            % pause(0.1);
             
             % Estimated Measure
             channelWeightsAPriori = stateAPriori(5:end);
@@ -259,7 +283,7 @@ for k = 1 : K
                 channelMatrix = channelMatrix + channelWeightsAPriori(L)*Circulant(:, :, L);
             end
             
-            Ref = reference_signal(sats_found(Satellite), ...
+            Ref = reference_signal(Satellites(Satellite), ...
                 stateDelayAPriori, ...
                 symbolFrequency, ...
                 samplingFrequency, ...
@@ -332,7 +356,7 @@ for k = 1 : K
             errorCovarianceAPosteriori = (eye(numberOfTaps + 1 + 4) - kalmanGain*sensibilityMatrix)*errorCovarianceAPriori;
 
             % In-Phase and Quadrature
-            centralPrompt = reference_signal(sats_found(Satellite), ...
+            centralPrompt = reference_signal(Satellites(Satellite), ...
                 real(stateAPosteriori(1)), ...
                 symbolFrequency, ...
                 samplingFrequency, ...
