@@ -1,5 +1,3 @@
-
-
 clear all;
 close all;
 
