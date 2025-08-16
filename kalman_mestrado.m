@@ -6,17 +6,21 @@ close all;
     K = 500;
 
     % System
+    C_N0_dBHz        = 50;                % Carrier-to-noise density ratio
     carrierFrequency = 1575.42e6;
     beta = 1/(2*pi*carrierFrequency);
     sequencePeriod = 1e-3;
     % Shouldn't the sampling frequency be a multiple of 1.023e6, due to the chip rate?
-    samplingFrequency = 4e6;
+    % Done
+    samplingFrequency = 4*1.023e6;
     samplingPeriod = 1/samplingFrequency;
     % Maybe we should rename this to chipRate. Symbol is often referred to 
     % as the navigation data bit, which should not be adopted here.
-    symbolFrequency = 1.023e6;
+    % Done
+    chippingFrequency = 1.023e6;
     % chipPeriod?
-    symbolPeriod = 1/symbolFrequency;
+    % Done
+    chipPeriod = 1/chippingFrequency;
     numberOfPeriods = 1;
     samplesPerPeriod = samplingFrequency * sequencePeriod;
     samplesTotal = numberOfPeriods * samplesPerPeriod;
@@ -24,6 +28,11 @@ close all;
     
     % Channel
     numberOfTaps = 10;
+    % Doppler profile for LOS phase: [phi0, fd, fdr, ...]
+    phi0             = -989865; % -2 * pi * fc * (30km / 3e8) I assumed here that 30km is the distance of a satellite to a receiver.
+    fd               = 7500;              % Doppler [Hz]
+    fdr              = 0;                 % Doppler rate [Hz/s]
+    doppler_profile  = [phi0, fd, fdr];
     
     % Variances
     varianceDoppDrift = 0.02;%3.141e-4;
@@ -108,7 +117,7 @@ changeSignal        = [zeros(15, 1)];
 changeSignalIntegration = [zeros(15, 1)];
 
 % Covariances
-doppPhaseVariance = pi^2/3;                    % Phase Variance
+doppPhaseVariance = 50^2 / 12;                    % Phase Variance
 % Doppler Variance
 % NOTE: I think this is too large. Acquisition often give a 
 % frequency estimate with +-25 Hz precision. Assuming the Doppler frequency
@@ -121,7 +130,7 @@ doppPhaseVariance = pi^2/3;                    % Phase Variance
 doppVariance = 250^2*4*pi^2/3; 
 doppDriftVariance = 0.02;                 % Doppler Drift Variance
 initDelayDoppCovariance = [
-0.5*symbolPeriod 0 0 0;
+0.5*chipPeriod 0 0 0;
 0 doppPhaseVariance 0 0; 
  0 0 doppVariance 0;
 0 0 0 doppDriftVariance];
@@ -135,15 +144,15 @@ zeros(numberOfTaps + 1, 4) initChanCovariance
 
 % Measurement Sensibility Bases
 
-[realDelaySensibilityBase, imagDelaySensibilityBase] = delayLinearization(numberOfTaps, symbolPeriod);
+[realDelaySensibilityBase, imagDelaySensibilityBase] = delayLinearization(numberOfTaps, chipPeriod);
 realDelaySensibilityBase = realDelaySensibilityBase/samplesTotal;
 imagDelaySensibilityBase = imagDelaySensibilityBase/samplesTotal;
 
-[realDoppDriftSensibilityBase, imagDoppDriftSensibilityBase] = doppDriftLinearization(numberOfTaps, symbolPeriod);
+[realDoppDriftSensibilityBase, imagDoppDriftSensibilityBase] = doppDriftLinearization(numberOfTaps, chipPeriod);
 realDoppDriftSensibilityBase = realDoppDriftSensibilityBase/samplesTotal;
 imagDoppDriftSensibilityBase = imagDoppDriftSensibilityBase/samplesTotal;
 
-[realAmbiguityVectorBase, imagAmbiguityVectorBase] = ambiguityVector(numberOfTaps, symbolPeriod);
+[realAmbiguityVectorBase, imagAmbiguityVectorBase] = ambiguityVector(numberOfTaps, chipPeriod);
 realAmbiguityVectorBase = realAmbiguityVectorBase/samplesTotal;
 imagAmbiguityVectorBase = imagAmbiguityVectorBase/samplesTotal;
 %Signal File Name
@@ -154,46 +163,51 @@ fileName = 'signal_source_L1E1_GNSSR_2.dat';
 %% Tracking and Acquisition
 
 for k = 1 : K
-
-    [signal, outputSampleIndex, File_Ended] = read_gr_complex_binary ( ...
-        fileName, ...
-        inputSampleIndex, ...
-        samplesTotal);
     
-    if File_Ended == true
-        break;
-    end
-    disp(inputSampleIndex);
+    Number_Samples_per_Period = samplingFrequency*sequencePeriod;
+     time = 0 : samplingPeriod : (samplesTotal - 1)*samplingPeriod;
+    % Simulated Signal Acquisition
+    [signal, ca_bb, ca_bb_del, los_phase, los_delay, ~] = generate_rx_ca_signal( ...
+        1, C_N0_dBHz, doppler_profile, carrierFrequency, samplesTotal*samplingPeriod, samplingPeriod);
+    signal = conj(signal(1 : Number_Samples_per_Period)');
 
-    inputSampleIndex = outputSampleIndex;
-
-    % Time Vector
+    % [signal, outputSampleIndex, File_Ended] = read_gr_complex_binary ( ...
+    %     fileName, ...
+    %     inputSampleIndex, ...
+    %     samplesTotal);
+    % 
+    % if File_Ended == true
+    %     break;
+    % end
+    % disp(inputSampleIndex);
+    % 
+    % inputSampleIndex = outputSampleIndex;
+    % 
+    % % Time Vector
     
-    time = 0 : samplingPeriod : (samplesTotal - 1)*samplingPeriod;
 
     if k <= 1
     
-        % Signal Acquisition
-        if exist('ACQ_DATA_L1E1_GNSSR_2.mat') ~= 2
-            Number_Samples_per_Period = samplingFrequency*sequencePeriod;
-            [ACQ_DATA, Doppler_Vector, Threshold, Satellites] = ca_acquisition( ...
-                time(1 : Number_Samples_per_Period), ...
-                signal(1 : Number_Samples_per_Period), ...
-                samplingFrequency, ...
-                symbolFrequency, ...
-                1);
-
-            save ACQ_DATA_L1E1_GNSSR_2.mat ACQ_DATA Doppler_Vector Threshold Satellites;
-        
-        else
-
-            load ACQ_DATA_L1E1_GNSSR_2.mat;
-            %Satellites = sats_found;
-            %Doppler_Vector = doppler_bin_vec;
-
-        end
-        
-        disp(Satellites);
+        % % Signal Acquisition
+        % if exist('ACQ_DATA_L1E1_GNSSR_2.mat') ~= 2
+             [ACQ_DATA, Doppler_Vector, Threshold, Satellites] = ca_acquisition( ...
+                 time(1 : Number_Samples_per_Period), ...
+                 signal(1 : Number_Samples_per_Period), ...
+                 samplingFrequency, ...
+                 chippingFrequency, ...
+                 1);
+        % 
+        %     save ACQ_DATA_L1E1_GNSSR_2.mat ACQ_DATA Doppler_Vector Threshold Satellites;
+        % 
+        % else
+        % 
+        %     load ACQ_DATA_L1E1_GNSSR_2.mat;
+        %     %Satellites = sats_found;
+        %     %Doppler_Vector = doppler_bin_vec;
+        % 
+        % end
+        % 
+        % disp(Satellites);
 
         % Delay and Doppler Acquisition
 
@@ -263,8 +277,8 @@ for k = 1 : K
             for aux = -numberOfTaps : 1 : numberOfTaps
                 Multi_Correlator = [Multi_Correlator; 
                 reference_signal(Satellites(Satellite), ...
-                stateDelayAPriori + aux*symbolPeriod/numberOfTaps, ...
-                symbolFrequency, ...
+                stateDelayAPriori + aux*chipPeriod/numberOfTaps, ...
+                chippingFrequency, ...
                 samplingFrequency, ...
                 numberOfPeriods).*dopplerEvolution];
             end
@@ -283,7 +297,7 @@ for k = 1 : K
             
             Ref = reference_signal(Satellites(Satellite), ...
                 stateDelayAPriori, ...
-                symbolFrequency, ...
+                chippingFrequency, ...
                 samplingFrequency, ...
                 numberOfPeriods)';
             
@@ -356,7 +370,7 @@ for k = 1 : K
             % In-Phase and Quadrature
             centralPrompt = reference_signal(Satellites(Satellite), ...
                 real(stateAPosteriori(1)), ...
-                symbolFrequency, ...
+                chippingFrequency, ...
                 samplingFrequency, ...
                 numberOfPeriods);
             quadrature(k-1, Sattellite)=imag(conj(processedSignal) * centralPrompt' / samplesTotal);
