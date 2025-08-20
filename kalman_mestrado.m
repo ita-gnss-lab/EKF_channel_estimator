@@ -1,7 +1,7 @@
 clear all;
 close all;
 
-% Parameters
+%% Parameters
     % Simulation
     K = 500;
 
@@ -12,7 +12,7 @@ close all;
     sequencePeriod = 1e-3;
     % Shouldn't the sampling frequency be a multiple of 1.023e6, due to the chip rate?
     % Done
-    samplingFrequency = 4*1.023e6;
+    samplingFrequency = 4*1e6;
     samplingPeriod = 1/samplingFrequency;
     % Maybe we should rename this to chipRate. Symbol is often referred to 
     % as the navigation data bit, which should not be adopted here.
@@ -117,7 +117,7 @@ changeSignal        = [zeros(15, 1)];
 changeSignalIntegration = [zeros(15, 1)];
 
 % Covariances
-doppPhaseVariance = 50^2 / 12;                    % Phase Variance
+doppPhaseVariance = pi^2 /3;                    % Phase Variance
 % Doppler Variance
 % NOTE: I think this is too large. Acquisition often give a 
 % frequency estimate with +-25 Hz precision. Assuming the Doppler frequency
@@ -127,7 +127,7 @@ doppPhaseVariance = 50^2 / 12;                    % Phase Variance
 % NOTE: From my experiments with Kaman filter based PLLs, i think that very
 % large initial Doppler frequency shift variances could make the filter to
 % never reach convergence.
-doppVariance = 250^2*4*pi^2/3; 
+doppVariance = 50^2 / 12; 
 doppDriftVariance = 0.02;                 % Doppler Drift Variance
 initDelayDoppCovariance = [
 0.5*chipPeriod 0 0 0;
@@ -163,51 +163,36 @@ fileName = 'signal_source_L1E1_GNSSR_2.dat';
 %% Tracking and Acquisition
 
 for k = 1 : K
-    
-    Number_Samples_per_Period = samplingFrequency*sequencePeriod;
-     time = 0 : samplingPeriod : (samplesTotal - 1)*samplingPeriod;
-    % Simulated Signal Acquisition
-    [signal, ca_bb, ca_bb_del, los_phase, los_delay, ~] = generate_rx_ca_signal( ...
-        1, C_N0_dBHz, doppler_profile, carrierFrequency, samplesTotal*samplingPeriod, samplingPeriod);
-    signal = conj(signal(1 : Number_Samples_per_Period)');
 
-    % [signal, outputSampleIndex, File_Ended] = read_gr_complex_binary ( ...
-    %     fileName, ...
-    %     inputSampleIndex, ...
-    %     samplesTotal);
-    % 
-    % if File_Ended == true
-    %     break;
-    % end
-    % disp(inputSampleIndex);
-    % 
-    % inputSampleIndex = outputSampleIndex;
-    % 
-    % % Time Vector
-    
+    [signal, inputSampleIndex, File_Ended] = get_from_DAT( ...
+        fileName, ...
+        inputSampleIndex, ...
+        samplesTotal);
+
+
+    % Time Vector
+    time = 0 : samplingPeriod : (samplesTotal - 1)*samplingPeriod;
 
     if k <= 1
-    
-        % % Signal Acquisition
-        % if exist('ACQ_DATA_L1E1_GNSSR_2.mat') ~= 2
+        % Signal Acquisition
+        if exist('ACQ_DATA_L1E1_GNSSR_2.mat') ~= 2
+             Number_Samples_per_Period = samplingFrequency*sequencePeriod;
              [ACQ_DATA, Doppler_Vector, Threshold, Satellites] = ca_acquisition( ...
                  time(1 : Number_Samples_per_Period), ...
                  signal(1 : Number_Samples_per_Period), ...
                  samplingFrequency, ...
                  chippingFrequency, ...
                  1);
-        % 
-        %     save ACQ_DATA_L1E1_GNSSR_2.mat ACQ_DATA Doppler_Vector Threshold Satellites;
-        % 
-        % else
-        % 
-        %     load ACQ_DATA_L1E1_GNSSR_2.mat;
-        %     %Satellites = sats_found;
-        %     %Doppler_Vector = doppler_bin_vec;
-        % 
-        % end
-        % 
-        % disp(Satellites);
+        
+            save ACQ_DATA_L1E1_GNSSR_2.mat ACQ_DATA Doppler_Vector Threshold Satellites;
+        
+        else
+        
+            load ACQ_DATA_L1E1_GNSSR_2.mat;
+            %Satellites = sats_found;
+            %Doppler_Vector = doppler_bin_vec;
+        
+        end
 
         % Delay and Doppler Acquisition
 
@@ -245,8 +230,8 @@ for k = 1 : K
             currentErrorCovariance(:,:) = errorCovariance(k-1, Sattellite, :, :);
 
             % Propagation Step
-
-            stateAPriori = modelTransitionMatrix * stateVector;
+            
+            stateAPriori = propagate_state(stateVector, modelTransitionMatrix);
             % NOTE: I think that it is not necessary to use
             % `conj(modelTransitionMatrix)` here, given that
             % `modelTransitionMatrix` would already yield an Hermitian
@@ -258,9 +243,12 @@ for k = 1 : K
             % numbers. Andreas Iliopoulos, however, adopt a complex Kalman
             % filter for tracking the channel coefficients for each
             % multipath signal as complex numbers.
-            errorCovarianceAPriori = ...
-            modelTransitionMatrix * currentErrorCovariance * conj(modelTransitionMatrix)' ...
-            + stateNoiseCovariance;
+
+            errorCovarianceAPriori = propagate_covariance(...
+                currentErrorCovariance,...
+                modelTransitionMatrix, ...
+                stateNoiseCovariance);
+
 
             % Doppler Correction 
             stateDoppPhaseAPriori = stateAPriori(2);
