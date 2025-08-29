@@ -31,9 +31,16 @@ stateTransitionMatrix = blkdiag(...
     channelStateTransitionMatrix);
 
 %% Cost Functions
-beta = 1 / (2 * pi * connfiguration.carrierFrequency);
+beta = 1 / (2 * pi * configuration.carrierFrequency);
 ECostMatrix = 0.1 * blkdiag(beta, 1, 1/epoch, 2/epoch^2);
 UCostMatrix = 0.1 * blkdiag(beta, 1, 1/epoch, 2/epoch^2);
+
+%% Initial State
+stateAPosteriori = zeros(numberOfTaps + 5, 1);
+stateAPosteriori(5) = 1;
+stateCovarianceMatrixAPosteriori = blkdiag(1e-4, 100, 1e-5, 1e-5, eye(1 + numberOfTaps));
+
+carrierState = [1e-3 configuration.dopplerProfile].';
 
 %% Simulation
 for k = 1 : simulationSteps
@@ -51,7 +58,7 @@ for k = 1 : simulationSteps
     
     % Update State 
     carrierState = ...
-        carrierStateTransitonMatrix * carrierState + ...
+        carrierStateTransitionMatrix * carrierState + ...
         carrierCouplingMatrix * controlInput;
     
     % Carrier Wipe-Off
