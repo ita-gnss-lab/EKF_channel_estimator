@@ -35,6 +35,9 @@ beta = 1 / (2 * pi * configuration.carrierFrequency);
 ECostMatrix = 0.1 * blkdiag(beta, 1, 1/epoch, 2/epoch^2);
 UCostMatrix = 0.1 * blkdiag(beta, 1, 1/epoch, 2/epoch^2);
 
+%% Coupling Matrix for Control Signal
+carrierCouplingMatrix = eye(4);
+
 %% Initial State
 stateAPosteriori = zeros(numberOfTaps + 5, 1);
 stateAPosteriori(5) = 1;
