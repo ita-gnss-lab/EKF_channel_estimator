@@ -4,10 +4,20 @@ load config_no_doppler.mat
 simulationSteps = 500;
 
 %% Covariances 
+% Convert CN0 from dB-Hz to linear scale
+carrierToNoiseRatio = 10^(configuration.carrierToNoiseDensityRatio / 10);
 
+% Compute the noise variance
+termalNoiseVarianceSquared = configuration.samplingFrequency / carrierToNoiseRatio;
 
 %% Simulation
 for k = 1 : simulationSteps
+    %% Forward Step
+    stateAPriori = stateTransitionMatrix * stateAPosteriori;  
+    stateCovarianceMatrixAPriori = stateTransitionMatrix * ...
+        stateCovarianceMatrixAPosteriori * stateTransitionMatrix.' ...
+        + Q;
+    
     %% Simulate Signal
     
     [receivedSignal, time] = gnss_received_signal(configuration, epoch);
@@ -40,6 +50,10 @@ for k = 1 : simulationSteps
     
     measurement = correlatorBank * wipedSignal / samplesTotal;
     measurementEstimative = measurementFunction(stateAPriori);
+
+    noiseCovarianceMatrix = ...
+        (termalNoiseVarianceSquared / samplesTotal.^2) * ...
+        (correlatorBank * correlatorBank.');
     
     %% Compute Jacobian
     delayJacobian = delayJacobianFunction(stateAPriori);
@@ -53,8 +67,8 @@ for k = 1 : simulationSteps
     kalmanGain = stateCovarianceMatrixAPriori * jacobian' \ ...
         (jacobian * stateCovarianceMatrixAPriori * jacobian' + noiseCovarianceMatrix);
     stateAPosteriori = stateAPriori + kalmanGain * (measurement - measurementEstimative);
-    stateCovarianceMatrixAPriori = (eye() - kalmanGain*jacobian) * ...
-        stateCovarianceAPriori;
+    stateCovarianceMatrixAPosteriori = (eye() - kalmanGain*jacobian) * ...
+        stateCovarianceMatrixAPriori;
     
     [stablizedCostMatrix, controlMatrix, ~] = idare(transitionMatrix, ...
         couplingMatrix, ...
