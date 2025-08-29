@@ -2,13 +2,22 @@ load config_no_doppler.mat
 
 %% Parameters
 simulationSteps = 500;
+numberOfTaps = 2;
+totalChips = 1023;
+epoch = totalChips / configuration.chippingFrequency;
 
 %% Covariances 
 % Convert CN0 from dB-Hz to linear scale
 carrierToNoiseRatio = 10^(configuration.carrierToNoiseDensityRatio / 10);
-
 % Compute the noise variance
 termalNoiseVarianceSquared = configuration.samplingFrequency / carrierToNoiseRatio;
+
+varianceSquared = [1e-3 1e-3 1e-2 1e-2 1e-2];
+stateTransitionCovariance = getCovarianceMatrix(...
+    varianceSquared, ...
+    epoch, ...
+    configuration.carrierFrequency, ...
+    numberOfTaps);
 
 %% Simulation
 for k = 1 : simulationSteps
@@ -16,8 +25,8 @@ for k = 1 : simulationSteps
     stateAPriori = stateTransitionMatrix * stateAPosteriori;  
     stateCovarianceMatrixAPriori = stateTransitionMatrix * ...
         stateCovarianceMatrixAPosteriori * stateTransitionMatrix.' ...
-        + Q;
-    
+        + stateTransitionCovariance;
+
     %% Simulate Signal
     
     [receivedSignal, time] = gnss_received_signal(configuration, epoch);
