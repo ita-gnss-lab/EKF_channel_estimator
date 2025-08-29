@@ -3,7 +3,7 @@ function y=sample_2(seq,offset,F_seq,Fs)
 
 T_seq=length(seq)/F_seq;
 
-N_samples=floor(T_seq*Fs);
+N_samples=floor(T_seq*Fs) + 1;
 
 seq_2=[seq seq seq seq seq];
 

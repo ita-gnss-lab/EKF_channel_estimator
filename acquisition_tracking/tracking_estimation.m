@@ -45,6 +45,8 @@ stateCovarianceMatrixAPosteriori = blkdiag(1e-4, 100, 1e-5, 1e-5, eye(1 + number
 
 carrierState = [1e-3 configuration.dopplerProfile].';
 
+controlInput = zeros(4, 1);
+
 %% Simulation
 for k = 1 : simulationSteps
     %% Forward Step
@@ -54,8 +56,8 @@ for k = 1 : simulationSteps
         + stateTransitionCovariance;
 
     %% Simulate Signal
-    
     [receivedSignal, time] = gnss_received_signal(configuration, epoch);
+    samplesTotal = length(time);
     
     %% Carrier Removal
     
@@ -65,26 +67,32 @@ for k = 1 : simulationSteps
         carrierCouplingMatrix * controlInput;
     
     % Carrier Wipe-Off
+    [totalPhaseAPriori, ~, ~] = get_LOS_dynamics(...
+        time, ...
+        stateAPriori(2:4).', ...
+        configuration.carrierFrequency);
     carrierCorrection = exp(totalPhaseAPriori);
     
-    wipedSignal = receivedSignal * carrierCorrection';
+    wipedSignal = receivedSignal .* carrierCorrection';
     
     %% Multi-Correlator 
-    
-    delaysVector = delayAPriori + tapSpacing * ...
+    delayAPriori = stateAPriori(1);
+    delaysVector = delayAPriori + ...
+        1 / (configuration.chippingFrequency * numberOfTaps) * ...
         (-numberOfTaps : 1 : numberOfTaps);
     correlatorBank = zeros(length(delaysVector), ...
-        configuration.samplingFrequency * deltaTime);
+        samplesTotal);
     for i = 1:length(delaysVector)
         correlatorBank(i,:) = reference_signal(configuration.satellite, ...
                     delaysVector(i), ...
                     configuration.chippingFrequency, ...
-                    configuration.sampplingFrequency, ...
+                    configuration.samplingFrequency, ...
                     1)';
     end
     
     measurement = correlatorBank * wipedSignal / samplesTotal;
-    measurementEstimative = measurementFunction(stateAPriori);
+    measurementEstimative = measurementFunction(stateAPriori, ...
+        1 / configuration.samplingFrequency);
 
     noiseCovarianceMatrix = ...
         (termalNoiseVarianceSquared / samplesTotal.^2) * ...
