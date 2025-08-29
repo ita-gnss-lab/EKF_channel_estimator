@@ -1,0 +1,13 @@
+configuration.satellite = 1;
+configuration.carrierToNoiseDensityRatio = 50;
+configuration.carrierFrequency = 1.57542e9;
+configuration.samplingFrequency = 4*1.023e6;
+configuration.chippingFrequency = 1.023e6;
+
+phi0             = 0; % -2 * pi * fc * (30km / 3e8) I assumed here that 30km is the distance of a satellite to a receiver.
+fd               = 0; % Doppler [Hz]
+fdr              = 0; % Doppler rate [Hz/s]
+doppler_profile  = [phi0, fd, fdr];
+
+configuration.dopplerProfile = doppler_profile;
+clear doppler_profile phi0 fd fdr;
