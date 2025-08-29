@@ -30,6 +30,11 @@ stateTransitionMatrix = blkdiag(...
     carrierStateTransitionMatrix,...
     channelStateTransitionMatrix);
 
+%% Cost Functions
+beta = 1 / (2 * pi * connfiguration.carrierFrequency);
+ECostMatrix = 0.1 * blkdiag(beta, 1, 1/epoch, 2/epoch^2);
+UCostMatrix = 0.1 * blkdiag(beta, 1, 1/epoch, 2/epoch^2);
+
 %% Simulation
 for k = 1 : simulationSteps
     %% Forward Step
