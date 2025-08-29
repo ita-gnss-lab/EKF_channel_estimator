@@ -1,4 +1,4 @@
-function [autocorrelation] = autocorrelation(delay)
+function [autocorrelation] = autocorrelation(delay, configuration)
 %AUTOCORRELATION Summary of this function goes here
 %   Detailed explanation goes here
 

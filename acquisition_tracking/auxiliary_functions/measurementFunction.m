@@ -1,9 +1,9 @@
-function estimative = measurementFunction(stateAPriori, samplingPeriod)
+function estimative = measurementFunction(stateAPriori, configuration)
 %% Generate Autocorrelation Matrix
 numberOfTaps = length(stateAPriori(5:end));
 delayError = stateAPriori(1);
 shiftedCorrelationsMatrix = ...
-    getShiftedCorrelations(delayError, numberOfTaps, samplingPeriod);
+    getShiftedCorrelations(delayError, numberOfTaps, configuration);
 
 %% Get Estimated Measurement
 totalPhaseError = stateAPriori(2);
