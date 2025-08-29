@@ -6,6 +6,7 @@ shifts = samplingPeriod * (0 : 1 : numberOfTaps);
 
 shiftedDelayMatrix = correlationsDelay' + shifts;
 
-shiftedDerivatives = autocorrelationDerivative(shiftedDelayMatrix);
+shiftedDerivatives = autocorrelationDerivative(shiftedDelayMatrix, ...
+    configuration.chippingFrequency, configuration.samplingFrequency);
 end
 
