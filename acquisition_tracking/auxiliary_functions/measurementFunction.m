@@ -1,6 +1,6 @@
 function estimative = measurementFunction(stateAPriori, configuration)
 %% Generate Autocorrelation Matrix
-numberOfTaps = length(stateAPriori(5:end));
+numberOfTaps = length(stateAPriori(6:end));
 delayError = stateAPriori(1);
 shiftedCorrelationsMatrix = ...
     getShiftedCorrelations(delayError, numberOfTaps, configuration);
@@ -9,6 +9,6 @@ shiftedCorrelationsMatrix = ...
 totalPhaseError = stateAPriori(2);
 channelWeights = stateAPriori(5:end);
 estimative = exp(totalPhaseError) * ...
-    sum(channelWeights .* shiftedCorrelationsMatrix); 
+    sum(channelWeights' .* shiftedCorrelationsMatrix); 
 
 end
