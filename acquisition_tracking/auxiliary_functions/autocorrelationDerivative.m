@@ -7,7 +7,7 @@ function [derivative] = autocorrelationDerivative(delay, Chipping_Frequency, Sam
     
     SIN2 = sin(pi/Chipping_Frequency * Integral_Interval).^2;
     MULT = SIN2./(pi*Integral_Interval/Chipping_Frequency);
-    SIN  = sin(2*pi * delay * Integral_Interval);
+    SIN  = sin(2*pi * delay .* Integral_Interval);
     Function = 2*MULT.*SIN;
     derivative = -trapz(Integral_Interval, Function);
 end

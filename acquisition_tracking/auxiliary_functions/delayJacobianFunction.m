@@ -1,15 +1,15 @@
-function [jacobian] = delayJacobianFunction(stateAPriori, samplingPeriod)
+function [jacobian] = delayJacobianFunction(stateAPriori, configuration)
 %DELAYJACOBIANFUNCTION Summary of this function goes here
 %   Detailed explanation goes here
 %% Generate Autocorrelation Matrix
-numberOfTaps = length(stateAPriori(5:end));
+numberOfTaps = length(stateAPriori(6:end));
 delayError = stateAPriori(1);
 shiftedDerivativesMatrix = ...
-    getShiftedDerivatives(delayError, numberOfTaps, samplingPeriod);
+    getShiftedDerivatives(delayError, numberOfTaps, configuration);
 
 %% Get Estimated Measurement
 totalPhaseError = stateAPriori(2);
 channelWeights = stateAPriori(5:end);
 jacobian = exp(totalPhaseError) * ...
-    sum(channelWeights .* shiftedDerivativesMatrix); 
+    sum(channelWeights' .* shiftedDerivativesMatrix); 
 end

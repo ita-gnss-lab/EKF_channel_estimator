@@ -99,7 +99,7 @@ for k = 1 : simulationSteps
         (correlatorBank * correlatorBank.');
     
     %% Compute Jacobian
-    delayJacobian = delayJacobianFunction(stateAPriori);
+    delayJacobian = delayJacobianFunction(stateAPriori, configuration);
     phaseJacobian = 1j * measurementEstimative;
     dopplerJacobian = zeros(2 * numberOfTaps + 1, 2);
     channelWeightsJacobian = exp(totalPhaseError) * channelWeights ...
