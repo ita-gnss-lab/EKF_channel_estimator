@@ -11,5 +11,5 @@ shiftedDerivativesMatrix = ...
 totalPhaseError = stateAPriori(2);
 channelWeights = stateAPriori(5:end);
 jacobian = exp(totalPhaseError) * ...
-    sum(channelWeights' .* shiftedDerivativesMatrix); 
+    sum(channelWeights.' .* shiftedDerivativesMatrix, 2); 
 end

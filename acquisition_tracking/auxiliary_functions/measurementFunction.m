@@ -9,6 +9,6 @@ shiftedCorrelationsMatrix = ...
 totalPhaseError = stateAPriori(2);
 channelWeights = stateAPriori(5:end);
 estimative = exp(totalPhaseError) * ...
-    sum(channelWeights' .* shiftedCorrelationsMatrix); 
+    sum(channelWeights' .* shiftedCorrelationsMatrix, 2); 
 
 end

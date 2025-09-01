@@ -1,3 +1,4 @@
+clear;
 load config_no_doppler.mat
 
 %% Parameters
@@ -40,6 +41,7 @@ carrierCouplingMatrix = eye(4);
 
 %% Initial State
 stateAPosteriori = zeros(numberOfTaps + 5, 1);
+stateAPosteriori(1) = 2e-4;
 stateAPosteriori(5) = 1;
 stateCovarianceMatrixAPosteriori = blkdiag(1e-4, 100, 1e-5, 1e-5, eye(1 + numberOfTaps));
 
@@ -51,6 +53,8 @@ controlInput = zeros(4, 1);
 for k = 1 : simulationSteps
     %% Forward Step
     stateAPriori = stateTransitionMatrix * stateAPosteriori;  
+    stateAPriori(1) = real(stateAPriori(1));
+    disp(stateAPriori(1));
     stateCovarianceMatrixAPriori = stateTransitionMatrix * ...
         stateCovarianceMatrixAPosteriori * stateTransitionMatrix.' ...
         + stateTransitionCovariance;
@@ -73,7 +77,7 @@ for k = 1 : simulationSteps
         configuration.carrierFrequency);
     carrierCorrection = exp(totalPhaseAPriori);
     
-    wipedSignal = receivedSignal .* carrierCorrection';
+    wipedSignal = receivedSignal .* conj(carrierCorrection);
     
     %% Multi-Correlator 
     delayAPriori = stateAPriori(1);
@@ -92,7 +96,7 @@ for k = 1 : simulationSteps
     
     measurement = correlatorBank * wipedSignal / samplesTotal;
     measurementEstimative = measurementFunction(stateAPriori, ...
-        configuration);
+        configuration) / samplesTotal;
 
     noiseCovarianceMatrix = ...
         (termalNoiseVarianceSquared / samplesTotal.^2) * ...
@@ -101,25 +105,32 @@ for k = 1 : simulationSteps
     %% Compute Jacobian
     delayJacobian = delayJacobianFunction(stateAPriori, configuration);
     phaseJacobian = 1j * measurementEstimative;
-    dopplerJacobian = zeros(2 * numberOfTaps + 1, 2);
-    channelWeightsJacobian = exp(totalPhaseError) * channelWeights ...
-        .* getShiftedCorrelations(delayError, numberOfTaps, samplingPeriod);
+    dopplerJacobian = zeros(2*numberOfTaps + 1, 2);
+    channelWeights = stateAPriori(5:end);
+    channelWeightsJacobian = exp(stateAPriori(2)) * channelWeights.' ...
+        .* getShiftedCorrelations(stateAPriori(1), numberOfTaps, configuration);
+
+    jacobian = [delayJacobian ...
+        phaseJacobian ...
+        dopplerJacobian ...
+        channelWeightsJacobian];
     
     %% Kalman Filter Estimation  
     
-    kalmanGain = stateCovarianceMatrixAPriori * jacobian' \ ...
-        (jacobian * stateCovarianceMatrixAPriori * jacobian' + noiseCovarianceMatrix);
+    kalmanGain = stateCovarianceMatrixAPriori * jacobian'...
+        * inv(jacobian * stateCovarianceMatrixAPriori * jacobian' + noiseCovarianceMatrix);
     stateAPosteriori = stateAPriori + kalmanGain * (measurement - measurementEstimative);
+    stateAPosteriori(1) = real(stateAPosteriori(1));
     stateCovarianceMatrixAPosteriori = (eye() - kalmanGain*jacobian) * ...
         stateCovarianceMatrixAPriori;
     
-    [stablizedCostMatrix, controlMatrix, ~] = idare(transitionMatrix, ...
-        couplingMatrix, ...
+    [stablizedCostMatrix, controlMatrix, ~] = idare(carrierStateTransitionMatrix, ...
+        carrierCouplingMatrix, ...
         ECostMatrix, ...
         UCostMatrix, ...
         [], []);
     
-    errorStateAPosteriori = stateAPosteriori(selection); 
+    errorStateAPosteriori = stateAPosteriori(1:4); 
     controlInput = controlMatrix * errorStateAPosteriori;
 
 end
