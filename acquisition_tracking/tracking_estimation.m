@@ -22,6 +22,10 @@ stateTransitionCovariance = getCovarianceMatrix(...
     configuration.carrierFrequency, ...
     numberOfTaps);
 
+%% State History Vectors
+delay = zeros(1, simulationSteps);
+error = zeros(1, simulationSteps);
+
 %% Transition Matrices
 [carrierStateTransitionMatrix, channelStateTransitionMatrix] = ...
     getModelTransitionMatrix(...
@@ -69,6 +73,8 @@ for k = 1 : simulationSteps
         stateCovarianceMatrixAPosteriori * stateTransitionMatrix' ...
         + stateTransitionCovariance;
 
+    error(k) = stateAPosteriori(1);
+
     %% Simulate Signal
     % (Rodrigo): Put this out of the loop
     [receivedSignal, time] = gnss_received_signal(configuration, epoch);
@@ -80,6 +86,8 @@ for k = 1 : simulationSteps
     carrierState = ...
         carrierStateTransitionMatrix * carrierState + ...
         carrierCouplingMatrix * controlInput;
+
+    delay(k) = carrierState(1);
     
     % Carrier Wipe-Off
     [totalPhaseAPriori, ~, ~] = get_LOS_dynamics(...
@@ -135,9 +143,22 @@ for k = 1 : simulationSteps
     stateAPosteriori(carrierError) = real(stateAPosteriori(carrierError));
     stateCovarianceMatrixAPosteriori = (eye(7) - kalmanGain*jacobian) * ...
         stateCovarianceMatrixAPriori;
+
     
     %% Control Signal Computation
     
     controlInput = controlMatrix * stateAPosteriori(carrierError);
 
 end
+
+figure(Name="Delay Estimation", NumberTitle="off");
+plot(delay);
+hold on;
+plot(1e-4 * ones(1, simulationSteps));
+
+figure(Name="Error Estimation", NumberTitle="off");
+plot(error);
+hold on;
+plot(zeros(1, simulationSteps));
+
+
