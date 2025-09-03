@@ -1,5 +1,6 @@
 clear;
 load config_no_doppler.mat
+rng(26437226);
 
 %% Parameters
 simulationSteps = 500;
