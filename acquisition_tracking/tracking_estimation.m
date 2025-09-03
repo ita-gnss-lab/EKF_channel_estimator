@@ -6,6 +6,8 @@ simulationSteps = 500;
 numberOfTaps = 2;
 totalChips = 1023;
 epoch = totalChips / configuration.chippingFrequency;
+carrierError = 1:4;
+channelWeights = 5 + 0:numberOfTaps;
 
 %% Covariances 
 % Convert CN0 from dB-Hz to linear scale
@@ -39,27 +41,36 @@ UCostMatrix = 0.1 * blkdiag(beta, 1, 1/epoch, 2/epoch^2);
 %% Coupling Matrix for Control Signal
 carrierCouplingMatrix = eye(4);
 
+%% IDARE Solution
+[stablizedCostMatrix, controlMatrix, ~] = idare(carrierStateTransitionMatrix, ...
+    carrierCouplingMatrix, ...
+    ECostMatrix, ...
+    UCostMatrix, ...
+    [], []);
+
 %% Initial State
 stateAPosteriori = zeros(numberOfTaps + 5, 1);
-stateAPosteriori(1) = 2e-4;
+stateAPosteriori(1) = 0;
 stateAPosteriori(5) = 1;
-stateCovarianceMatrixAPosteriori = blkdiag(1e-4, 100, 1e-5, 1e-5, eye(1 + numberOfTaps));
 
-carrierState = [1e-3 configuration.dopplerProfile].';
+stateCovarianceMatrixAPosteriori = blkdiag(1e-6, (2*pi)^2/12, (50)^2/12, 0.2^2/12, 0.01 * eye(1 + numberOfTaps));
 
-controlInput = zeros(4, 1);
+carrierState = [1.1e-4 configuration.dopplerProfile].';
+
+% (Rodrigo: Compute the controlInput as L * stateAPosteriori)
+controlInput = controlMatrix * stateAPosteriori(1:4);
 
 %% Simulation
 for k = 1 : simulationSteps
     %% Forward Step
     stateAPriori = stateTransitionMatrix * stateAPosteriori;  
-    stateAPriori(1) = real(stateAPriori(1));
-    disp(stateAPriori(1));
+    stateAPriori(carrierError) = real(stateAPriori(carrierError));
     stateCovarianceMatrixAPriori = stateTransitionMatrix * ...
-        stateCovarianceMatrixAPosteriori * stateTransitionMatrix.' ...
+        stateCovarianceMatrixAPosteriori * stateTransitionMatrix' ...
         + stateTransitionCovariance;
 
     %% Simulate Signal
+    % (Rodrigo): Put this out of the loop
     [receivedSignal, time] = gnss_received_signal(configuration, epoch);
     samplesTotal = length(time);
     
@@ -73,14 +84,14 @@ for k = 1 : simulationSteps
     % Carrier Wipe-Off
     [totalPhaseAPriori, ~, ~] = get_LOS_dynamics(...
         time, ...
-        stateAPriori(2:4).', ...
+        carrierState(2:4).', ...
         configuration.carrierFrequency);
-    carrierCorrection = exp(totalPhaseAPriori);
+    carrierCorrection = exp(1j * totalPhaseAPriori);
     
     wipedSignal = receivedSignal .* conj(carrierCorrection);
     
     %% Multi-Correlator 
-    delayAPriori = stateAPriori(1);
+    delayAPriori = carrierState(1);
     delaysVector = delayAPriori + ...
         1 / (configuration.chippingFrequency * numberOfTaps) * ...
         (-numberOfTaps : 1 : numberOfTaps);
@@ -106,9 +117,8 @@ for k = 1 : simulationSteps
     delayJacobian = delayJacobianFunction(stateAPriori, configuration);
     phaseJacobian = 1j * measurementEstimative;
     dopplerJacobian = zeros(2*numberOfTaps + 1, 2);
-    channelWeights = stateAPriori(5:end);
-    channelWeightsJacobian = exp(stateAPriori(2)) * channelWeights.' ...
-        .* getShiftedCorrelations(stateAPriori(1), numberOfTaps, configuration);
+    channelWeightsJacobian = exp(1j * stateAPriori(2)) .* ...
+        getShiftedCorrelations(stateAPriori(1), numberOfTaps, configuration);
 
     jacobian = [delayJacobian ...
         phaseJacobian ...
@@ -117,20 +127,17 @@ for k = 1 : simulationSteps
     
     %% Kalman Filter Estimation  
     
+    % HACK: The inversion of the matrix is hard-coded to use an eye(5) (and
+    % eye(7) somewhere else) matrix. We need to make it more general later.
     kalmanGain = stateCovarianceMatrixAPriori * jacobian'...
-        * inv(jacobian * stateCovarianceMatrixAPriori * jacobian' + noiseCovarianceMatrix);
+        *((jacobian * stateCovarianceMatrixAPriori * jacobian' + noiseCovarianceMatrix) \ eye(5));
     stateAPosteriori = stateAPriori + kalmanGain * (measurement - measurementEstimative);
-    stateAPosteriori(1) = real(stateAPosteriori(1));
-    stateCovarianceMatrixAPosteriori = (eye() - kalmanGain*jacobian) * ...
+    stateAPosteriori(carrierError) = real(stateAPosteriori(carrierError));
+    stateCovarianceMatrixAPosteriori = (eye(7) - kalmanGain*jacobian) * ...
         stateCovarianceMatrixAPriori;
     
-    [stablizedCostMatrix, controlMatrix, ~] = idare(carrierStateTransitionMatrix, ...
-        carrierCouplingMatrix, ...
-        ECostMatrix, ...
-        UCostMatrix, ...
-        [], []);
+    %% Control Signal Computation
     
-    errorStateAPosteriori = stateAPosteriori(1:4); 
-    controlInput = controlMatrix * errorStateAPosteriori;
+    controlInput = controlMatrix * stateAPosteriori(carrierError);
 
 end
