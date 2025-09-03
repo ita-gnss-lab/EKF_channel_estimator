@@ -40,12 +40,12 @@ stateTransitionMatrix = blkdiag(...
 
 %% Cost Functions
 beta = 1 / (2 * pi * configuration.carrierFrequency);
-ECostMatrix = 0.1 * blkdiag(beta, 1, 1/epoch, 2/epoch^2);
-UCostMatrix = 0.1 * blkdiag(beta, 1, 1/epoch, 2/epoch^2);
+relation = 0.9;
+ECostMatrix =  relation * blkdiag(beta, 1, 1/epoch, 2/epoch^2);
+UCostMatrix =  blkdiag(beta, 1, 1/epoch, 2/epoch^2);
 
 %% Coupling Matrix for Control Signal
 carrierCouplingMatrix = eye(4);
-
 %% IDARE Solution
 [stablizedCostMatrix, controlMatrix, ~] = idare(carrierStateTransitionMatrix, ...
     carrierCouplingMatrix, ...
@@ -55,15 +55,14 @@ carrierCouplingMatrix = eye(4);
 
 %% Initial State
 stateAPosteriori = zeros(numberOfTaps + 5, 1);
-stateAPosteriori(1) = 0;
+stateAPosteriori(1) = -1e-6;
 stateAPosteriori(5) = 1;
 
 stateCovarianceMatrixAPosteriori = blkdiag(1e-6, (2*pi)^2/12, (50)^2/12, 0.2^2/12, 0.01 * eye(1 + numberOfTaps));
 
 carrierState = [1.1e-4 configuration.dopplerProfile].';
 
-% (Rodrigo: Compute the controlInput as L * stateAPosteriori)
-controlInput = controlMatrix * stateAPosteriori(1:4);
+controlInput = controlMatrix * stateAPosteriori(carrierError);
 
 %% Simulation
 for k = 1 : simulationSteps
@@ -87,6 +86,10 @@ for k = 1 : simulationSteps
     carrierState = ...
         carrierStateTransitionMatrix * carrierState + ...
         carrierCouplingMatrix * controlInput;
+    disp('value');
+    disp(carrierState(3));
+    disp('error');
+    disp(stateAPosteriori(3));
 
     delay(k) = carrierState(1);
     
