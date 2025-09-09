@@ -22,11 +22,11 @@ delay_in_samples = LOS_delay * configuration.samplingFrequency;
 apply_delay = dsp.VariableFractionalDelay("InterpolationMethod", "Linear", 'MaximumDelay',9999);
 delayed_code = apply_delay(sampled_code, delay_in_samples);
 % Applies the phase
-distorted_code = delayed_code .* exp(1j*LOS_phase);
+received_signal = delayed_code .* exp(1j*LOS_phase);
 
 %% THERMAL NOISE
-noise = get_simple_thermal_noise(length(time), 1 / configuration.samplingFrequency, configuration.carrierToNoiseDensityRatio);
-received_signal = distorted_code + noise; 
+% noise = get_simple_thermal_noise(length(time), 1 / configuration.samplingFrequency, configuration.carrierToNoiseDensityRatio);
+% received_signal = distorted_code + noise; 
 
 end
 

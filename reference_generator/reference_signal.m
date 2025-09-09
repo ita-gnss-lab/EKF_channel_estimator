@@ -2,7 +2,9 @@
 
 function signal=reference_signal(PRN,offset,f_seq,fs,num_periods)
 
-seq=cacode(PRN);
+PRN_code = gnssCACode(PRN, "GPS");
+% Remaps to +1 and -1
+seq = double(2*PRN_code - 1);
 
 seq=repmat(seq,1,num_periods);
 

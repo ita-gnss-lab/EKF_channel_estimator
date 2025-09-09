@@ -24,8 +24,8 @@ stateTransitionCovariance = getCovarianceMatrix(...
     numberOfTaps);
 
 %% State History Vectors
-delay = zeros(1, simulationSteps);
-error = zeros(1, simulationSteps);
+carrierStateRecord = zeros(4, simulationSteps);
+errorStateRecord = zeros(4, simulationSteps);
 
 %% Transition Matrices
 [carrierStateTransitionMatrix, channelStateTransitionMatrix] = ...
@@ -65,8 +65,13 @@ carrierState = [1.1e-4 configuration.dopplerProfile].';
 
 controlInput = controlMatrix * stateAPosteriori(carrierError);
 
+%% Simulate Signal
+% (Rodrigo): Put this out of the loop
+[simulatedSignal, totalTime] = gnss_received_signal(configuration, epoch*(simulationSteps + 1));
+samplesTotal = epoch*configuration.samplingFrequency + 1;
+
 %% Simulation
-for k = 1 : simulationSteps
+for k = 2 : simulationSteps
     %% Forward Step
     stateAPriori = stateTransitionMatrix * stateAPosteriori;  
     stateAPriori(carrierError) = real(stateAPriori(carrierError));
@@ -74,13 +79,12 @@ for k = 1 : simulationSteps
         stateCovarianceMatrixAPosteriori * stateTransitionMatrix' ...
         + stateTransitionCovariance;
 
-    error(k) = stateAPosteriori(1);
+    errorStateRecord(:, k) = stateAPosteriori(1:4);
 
-    %% Simulate Signal
-    % (Rodrigo): Put this out of the loop
-    [receivedSignal, time] = gnss_received_signal(configuration, epoch);
-    samplesTotal = length(time);
-    
+    %% Signal 
+    receivedSignal = simulatedSignal(((k - 1) * samplesTotal + 1: k * samplesTotal));
+    time = [0 : 1 / configuration.samplingFrequency : epoch];
+
     %% Carrier Removal
     
     % Update State 
@@ -92,10 +96,10 @@ for k = 1 : simulationSteps
     disp('error');
     disp(stateAPosteriori(2));
 
-    delay(k) = carrierState(1);
+    carrierStateRecord(:, k) = carrierState(1:4);
     
     % Carrier Wipe-Off
-    [totalPhaseAPriori, ~, ~] = get_LOS_dynamics(...
+    [totalPhaseAPriori, actualUsedDelay, ~] = get_LOS_dynamics(...
         time, ...
         carrierState(2:4).', ...
         configuration.carrierFrequency);
@@ -105,14 +109,13 @@ for k = 1 : simulationSteps
     
     %% Multi-Correlator 
     delayAPriori = carrierState(1);
-    delaysVector = delayAPriori + ...
+    delaysVector = actualUsedDelay(1) + ...
         1 / (configuration.chippingFrequency * numberOfTaps) * ...
         (-numberOfTaps : 1 : numberOfTaps);
     correlatorBank = zeros(length(delaysVector), ...
         samplesTotal);
     for i = 1:length(delaysVector)
-        correlatorBank(i,:) = (1/samplesTotal) * ...
-            reference_signal(configuration.satellite, ...
+        correlatorBank(i,:) = reference_signal(configuration.satellite, ...
                     delaysVector(i), ...
                     configuration.chippingFrequency, ...
                     configuration.samplingFrequency, ...
@@ -122,6 +125,11 @@ for k = 1 : simulationSteps
     measurement = correlatorBank * wipedSignal / samplesTotal;
     measurementEstimative = measurementFunction(stateAPriori, ...
         configuration) / samplesTotal;
+    plot(abs(measurement));
+    %hold on;
+    %plot(abs(measurementEstimative));
+    %hold off;
+    pause(0.1)
 
     noiseCovarianceMatrix = ...
         (termalNoiseVarianceSquared / samplesTotal.^2) * ...
@@ -158,12 +166,12 @@ for k = 1 : simulationSteps
 end
 
 figure(Name="Delay Estimation", NumberTitle="off");
-plot(delay);
+plot(carrierStateRecord(1,:));
 hold on;
 plot(1e-4 * ones(1, simulationSteps));
 
 figure(Name="Error Estimation", NumberTitle="off");
-plot(error);
+plot(errorStateRecord(1, :));
 hold on;
 plot(zeros(1, simulationSteps));
 
