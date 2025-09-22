@@ -1,9 +1,12 @@
-function [received_signal, time] = gnss_received_signal(configuration, simulationTime)
+function [received_signal, time] = gnss_received_signal(configuration, numberOfEpochs)
 %   GNSS_RECEIVED_SIGNAL
 %   Detailed explanation goes here
 
+samples = numberOfEpochs * configuration.totalChips * ...
+            (configuration.samplingFrequency / configuration.chippingFrequency);
 % Time vector
-time = [0 : 1 / configuration.samplingFrequency : simulationTime];
+time = 1 / configuration.samplingFrequency * ...
+        [0 :  samples];
 
 %% TRANSMITTED PILOT SIGNAL
 % Gets the code in bits; 0 and 1
@@ -11,16 +14,18 @@ PRN_code = gnssCACode(configuration.satellite, "GPS");
 % Remaps to +1 and -1
 ranging_code = double(2*PRN_code - 1);
 % Samples it
-current_chip = mod(floor(time.* configuration.chippingFrequency), numel(PRN_code)) + 1;
+current_chip = mod((time.* configuration.chippingFrequency), numel(PRN_code)) + 1;
 sampled_code = ranging_code(current_chip);  
 
 %% LOS PHASE AND DELAY
 % Computes LOS transmission phase and delay
 [LOS_phase, LOS_delay] = get_LOS_dynamics(time, configuration.dopplerProfile, configuration.carrierFrequency);
-% Applies the delay
-delay_in_samples = LOS_delay * configuration.samplingFrequency;
-apply_delay = dsp.VariableFractionalDelay("InterpolationMethod", "Linear", 'MaximumDelay',9999);
-delayed_code = apply_delay(sampled_code, delay_in_samples);
+% % Applies the delay
+% delay_in_samples = LOS_delay * configuration.samplingFrequency;
+% delay_handler = dsp.VariableFractionalDelay("InterpolationMethod","Linear", 'MaximumDelay',9999);
+% delayed_code = delay_handler(sampled_code, delay_in_samples);
+delay_in_samples = floor(LOS_delay * configuration.samplingFrequency);
+delayed_code = circshift(sampled_code, delay_in_samples);
 % Applies the phase
 received_signal = delayed_code .* exp(1j*LOS_phase);
 

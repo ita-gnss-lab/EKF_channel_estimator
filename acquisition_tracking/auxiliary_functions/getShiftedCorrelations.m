@@ -1,7 +1,9 @@
 function shiftedCorrelations = getShiftedCorrelations(delayError, numberOfTaps, configuration)
-samplingPeriod = 1 / configuration.samplingFrequency;
-correlationsDelay = delayError + samplingPeriod * (-numberOfTaps : 1 : numberOfTaps);
-shifts = samplingPeriod * (0 : 1 : numberOfTaps);
+correlationsDelay = delayError + ...
+    1 / (configuration.chippingFrequency * numberOfTaps) * ...
+    (-numberOfTaps : 1 : numberOfTaps);
+shifts = 1 / (configuration.chippingFrequency * numberOfTaps) *...
+    (0 : 1 : numberOfTaps);
 
 shiftedDelayMatrix = correlationsDelay' + shifts;
 

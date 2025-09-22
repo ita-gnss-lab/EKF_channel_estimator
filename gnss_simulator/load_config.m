@@ -1,5 +1,6 @@
 configuration.satellite = 1;
 configuration.carrierToNoiseDensityRatio = 50;
+configuration.totalChips = 1023;
 configuration.carrierFrequency = 1.57542e9;
 configuration.samplingFrequency = 4*1.023e6;
 configuration.chippingFrequency = 1.023e6;
