@@ -5,8 +5,7 @@ rng(26437226);
 %% Parameters
 simulationSteps = 500;
 numberOfTaps = 2;
-totalChips = 1023;
-epoch = totalChips / configuration.chippingFrequency;
+epoch = configuration.totalChips / configuration.chippingFrequency;
 carrierError = 1:4;
 channelWeights = 5 + 0:numberOfTaps;
 
@@ -40,7 +39,7 @@ stateTransitionMatrix = blkdiag(...
 
 %% Cost Functions
 beta = 1 / (2 * pi * configuration.carrierFrequency);
-relation = 1.1;
+relation = 0.9;
 ECostMatrix =  relation * blkdiag(beta, 1, 1/epoch, 2/epoch^2);
 UCostMatrix =  blkdiag(beta, 1, 1/epoch, 2/epoch^2);
 
@@ -56,18 +55,18 @@ carrierCouplingMatrix = eye(4);
 
 %% Initial State
 stateAPosteriori = zeros(numberOfTaps + 5, 1);
-stateAPosteriori(1) = -1e-6;
+% stateAPosteriori(1) = 1e-6;
 stateAPosteriori(5) = 1;
 
 stateCovarianceMatrixAPosteriori = blkdiag(1e-6, (2*pi)^2/12, (50)^2/12, 0.2^2/12, 0.01 * eye(1 + numberOfTaps));
 
-carrierState = [1.1e-4 configuration.dopplerProfile].';
+carrierState = [1e-4 configuration.dopplerProfile].';
 
 controlInput = controlMatrix * stateAPosteriori(carrierError);
 
 %% Simulate Signal
 % (Rodrigo): Put this out of the loop
-[simulatedSignal, totalTime] = gnss_received_signal(configuration, epoch*(simulationSteps + 1));
+[simulatedSignal, totalTime] = gnss_received_signal(configuration, simulationSteps + 1);
 samplesTotal = epoch*configuration.samplingFrequency + 1;
 
 %% Simulation
@@ -91,10 +90,6 @@ for k = 2 : simulationSteps
     carrierState = ...
         carrierStateTransitionMatrix * carrierState + ...
         carrierCouplingMatrix * controlInput;
-    disp('value');
-    disp(carrierState(2));
-    disp('error');
-    disp(stateAPosteriori(2));
 
     carrierStateRecord(:, k) = carrierState(1:4);
     
@@ -109,17 +104,14 @@ for k = 2 : simulationSteps
     
     %% Multi-Correlator 
     delayAPriori = carrierState(1);
-    delaysVector = actualUsedDelay(1) + ...
+    delaysVector = delayAPriori + ...
         1 / (configuration.chippingFrequency * numberOfTaps) * ...
         (-numberOfTaps : 1 : numberOfTaps);
     correlatorBank = zeros(length(delaysVector), ...
         samplesTotal);
     for i = 1:length(delaysVector)
-        correlatorBank(i,:) = reference_signal(configuration.satellite, ...
-                    delaysVector(i), ...
-                    configuration.chippingFrequency, ...
-                    configuration.samplingFrequency, ...
-                    1)';
+        correlatorBank(i,:) = reference_signal(configuration, ...
+                    delaysVector(i))';
     end
     
     measurement = correlatorBank * wipedSignal / samplesTotal;
@@ -136,11 +128,12 @@ for k = 2 : simulationSteps
         (correlatorBank * correlatorBank.');
     
     %% Compute Jacobian
-    delayJacobian = delayJacobianFunction(stateAPriori, configuration);
+    %delayJacobian = delayJacobianFunction(stateAPriori, configuration) / samplesTotal;
+    delayJacobian = [1/configuration.chippingFrequency ; 1/configuration.chippingFrequency ; 0 ; -1/configuration.chippingFrequency; -1/configuration.chippingFrequency];
     phaseJacobian = 1j * measurementEstimative;
     dopplerJacobian = zeros(2*numberOfTaps + 1, 2);
     channelWeightsJacobian = exp(1j * stateAPriori(2)) .* ...
-        getShiftedCorrelations(stateAPriori(1), numberOfTaps, configuration);
+        getShiftedCorrelations(stateAPriori(1), numberOfTaps, configuration) / samplesTotal;
 
     jacobian = [delayJacobian ...
         phaseJacobian ...
