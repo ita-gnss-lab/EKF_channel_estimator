@@ -2,11 +2,10 @@ function [received_signal, time] = gnss_received_signal(configuration, numberOfE
 %   GNSS_RECEIVED_SIGNAL
 %   Detailed explanation goes here
 
-samples = numberOfEpochs * configuration.totalChips * ...
+N = numberOfEpochs * configuration.totalChips * ...
             (configuration.samplingFrequency / configuration.chippingFrequency);
 % Time vector
-time = 1 / configuration.samplingFrequency * ...
-        [0 :  samples];
+time = (0 :  N - 1) / configuration.samplingFrequency;
 
 %% TRANSMITTED PILOT SIGNAL
 % Gets the code in bits; 0 and 1

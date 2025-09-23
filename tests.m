@@ -21,7 +21,7 @@ channelWeights = [5, 0:(numberOfTaps - 1)];
 [simulatedSignal, totalTime] = gnss_received_signal(configuration, simulationSteps + 1);
 % NOTE: samplesTotal = N in our notation, i.e., the amount of samples 
 % within a PR-code block.
-samplesTotal = epoch*configuration.samplingFrequency + 1;
+samplesTotal = epoch*configuration.samplingFrequency;
 
 %% Checking if the simulated signal can be acquired
 % NOTE: It seems that the signal is being acquired correctly.
@@ -35,7 +35,7 @@ gsa = gnssSignalAcquirer( ...
 % that the code-phase offset is changing over time, as you also have shown
 % in your section below, where you plot the correlation of the first
 % PR-code block with shifted samples over time.
-samplesOffset = 1; %simulationSteps / 2;
+samplesOffset = 1000;
 [acqtable, corrmat] = gsa(simulatedSignal(samplesOffset + 1: (samplesOffset + configuration.samplingFrequency*1e-3)), 1);
 disp("Code-Phase Offset: " + num2str(acqtable.CodePhaseOffset));
 disp("Coarse Doppler Shift: " + num2str(acqtable.FrequencyOffset));
@@ -53,10 +53,11 @@ title("Correlation Plot for PRN ID: " + acqtable.PRNID(satIndex));
 %%
 CorrelationResults = zeros(simulationSteps, 1);
 for i = 1:(simulationSteps - 2)
-    CorrelationResults(i) = real(simulatedSignal((samplesTotal + 1):(2)*samplesTotal)).' * ...
-    real(simulatedSignal(((i+1)*samplesTotal + 1):(i+2)*samplesTotal)) / samplesTotal;
+    CorrelationResults(i) = abs(simulatedSignal((samplesTotal + 1):(2)*samplesTotal)).' * ...
+    abs(simulatedSignal(((i+1)*samplesTotal + 1):(i+2)*samplesTotal)) / samplesTotal;
 end
 
+figure;
 plot(CorrelationResults);
 
 in = (1:4000)';
@@ -67,6 +68,7 @@ start = circshift(in, delayVec);
 %outcase1(1:delayVec) = start(1:delayVec);
 outcase1(delayVec) = start(delayVec);
 
+figure;
 plot(outcase1(:,1));
 hold on;
 plot(in)
