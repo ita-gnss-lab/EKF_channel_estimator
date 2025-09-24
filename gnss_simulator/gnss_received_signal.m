@@ -23,7 +23,7 @@ sampled_code = ranging_code(current_chip);
 % delay_in_samples = LOS_delay * configuration.samplingFrequency;
 % delay_handler = dsp.VariableFractionalDelay("InterpolationMethod","Linear", 'MaximumDelay',9999);
 % delayed_code = delay_handler(sampled_code, delay_in_samples);
-delay_in_samples = floor(LOS_delay * configuration.samplingFrequency);
+delay_in_samples = round(LOS_delay * configuration.samplingFrequency);
 delayed_code = circshift(sampled_code, delay_in_samples);
 % Applies the phase
 received_signal = delayed_code .* exp(1j*LOS_phase);

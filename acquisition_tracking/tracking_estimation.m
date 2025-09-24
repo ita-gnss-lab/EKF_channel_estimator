@@ -4,7 +4,8 @@ rng(26437226);
 
 %% Parameters
 simulationSteps = 3000;
-q = 2;
+q = 5;
+middleSample = q + 1;
 epoch = configuration.totalChips / configuration.chippingFrequency;
 
 % NOTE: These were not being used
@@ -63,7 +64,7 @@ x_hat_k_k(5) = 1;
 P_k_k = blkdiag(1e-6, (2*pi)^2/12, (50)^2/12, 0.2^2/12, 0.01 * eye(1 + q));
 % stateCovarianceMatrixAPosteriori = blkdiag(0, 0, 0, 0, zeros(1 + numberOfTaps));
 
-x_LQG_k = [1.2e-4 configuration.dopplerProfile].';
+x_LQG_k = [1e-4 configuration.dopplerProfile].';
 
 u_LQG = L * x_hat_k_k(WienerStatesSelection);
 
@@ -105,7 +106,9 @@ for k = 2 : simulationSteps
     wipedSignal = receivedSignal .* conj(carrierCorrection);
     
     %% Multi-Correlator 
-    delayAPriori = x_LQG_k(1);
+    delayAPriori = 1e-4;%x_LQG_k(1);
+    % NOTE: Maybe we should substitute `configuration.chippingFrequency`
+    % by `configuration.samplingFrequency`, no?
     delaysVector = delayAPriori + ...
         1 / (configuration.chippingFrequency * q) * ...
         (-q : 1 : q);
@@ -184,7 +187,7 @@ xlabel("Epochs (Simulation Steps)");
 
 % Observe the innovation sequence time series
 figure(Name="Middle tap of the innovation sequence", NumberTitle="off");
-plot(epochVector, abs(innovationRecord(3,:)));
+plot(epochVector, abs(innovationRecord(middleSample,:)));
 ylabel("Innovation sequence of the middle tap (3)");
 xlabel("Epochs (Simulation Steps)");
 
