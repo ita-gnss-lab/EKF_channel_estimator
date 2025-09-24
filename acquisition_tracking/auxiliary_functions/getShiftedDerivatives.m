@@ -7,7 +7,7 @@ correlationsDelay = delayError + ...
 shifts = 1 / (configuration.chippingFrequency * numberOfTaps) *...
     (0 : 1 : numberOfTaps);
 
-shiftedDelayMatrix = correlationsDelay' + shifts;
+shiftedDelayMatrix = correlationsDelay.' + shifts;
 shiftedDerivatives = zeros(size(shiftedDelayMatrix, 1), size(shiftedDelayMatrix, 2));
 for i = 1:size(shiftedDelayMatrix, 1)
     for j = 1:size(shiftedDelayMatrix, 2)

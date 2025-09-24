@@ -15,7 +15,7 @@ carrierToNoiseRatio = 10^(configuration.carrierToNoiseDensityRatio / 10);
 % Compute the noise variance
 termalNoiseVarianceSquared = configuration.samplingFrequency / carrierToNoiseRatio;
 
-varianceSquared = [1e-2 1e-3 1e-2 1e-2 1e-2];
+varianceSquared = [0 0 0 0 0];
 stateTransitionCovariance = getCovarianceMatrix(...
     varianceSquared, ...
     epoch, ...
@@ -59,6 +59,7 @@ stateAPosteriori = zeros(numberOfTaps + 5, 1);
 stateAPosteriori(5) = 1;
 
 stateCovarianceMatrixAPosteriori = blkdiag(1e-6, (2*pi)^2/12, (50)^2/12, 0.2^2/12, 0.01 * eye(1 + numberOfTaps));
+% stateCovarianceMatrixAPosteriori = blkdiag(0, (0)^2/12, (0)^2/12, 0^2/12, 0 * eye(1 + numberOfTaps));
 
 carrierState = [1e-4 configuration.dopplerProfile].';
 
@@ -67,7 +68,7 @@ controlInput = controlMatrix * stateAPosteriori(carrierError);
 %% Simulate Signal
 % (Rodrigo): Put this out of the loop
 [simulatedSignal, totalTime] = gnss_received_signal(configuration, simulationSteps + 1);
-samplesTotal = epoch*configuration.samplingFrequency + 1;
+samplesTotal = epoch*configuration.samplingFrequency;
 
 %% Simulation
 for k = 2 : simulationSteps
@@ -82,7 +83,7 @@ for k = 2 : simulationSteps
 
     %% Signal 
     receivedSignal = simulatedSignal(((k - 1) * samplesTotal + 1: k * samplesTotal));
-    time = [0 : 1 / configuration.samplingFrequency : epoch];
+    time = 1 / configuration.samplingFrequency : 1 / configuration.samplingFrequency : epoch;
 
     %% Carrier Removal
     
@@ -96,7 +97,7 @@ for k = 2 : simulationSteps
     % Carrier Wipe-Off
     [totalPhaseAPriori, actualUsedDelay, ~] = get_LOS_dynamics(...
         time, ...
-        carrierState(2:4).', ...
+        configuration.dopplerProfile, ...  %carrierState(2:4).'
         configuration.carrierFrequency);
     carrierCorrection = exp(1j * totalPhaseAPriori);
     
@@ -121,15 +122,15 @@ for k = 2 : simulationSteps
     %hold on;
     %plot(abs(measurementEstimative));
     %hold off;
-    pause(0.1)
+    %pause(0.1)
 
     noiseCovarianceMatrix = ...
         (termalNoiseVarianceSquared / samplesTotal.^2) * ...
         (correlatorBank * correlatorBank.');
     
     %% Compute Jacobian
-    %delayJacobian = delayJacobianFunction(stateAPriori, configuration) / samplesTotal;
-    delayJacobian = [1/configuration.chippingFrequency ; 1/configuration.chippingFrequency ; 0 ; -1/configuration.chippingFrequency; -1/configuration.chippingFrequency];
+    delayJacobian = delayJacobianFunction(stateAPriori, configuration) / samplesTotal;
+    % delayJacobian = [1/configuration.chippingFrequency ; 1/configuration.chippingFrequency ; 0 ; -1/configuration.chippingFrequency; -1/configuration.chippingFrequency];
     phaseJacobian = 1j * measurementEstimative;
     dopplerJacobian = zeros(2*numberOfTaps + 1, 2);
     channelWeightsJacobian = exp(1j * stateAPriori(2)) .* ...

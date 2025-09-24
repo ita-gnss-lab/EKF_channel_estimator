@@ -5,7 +5,7 @@ correlationsDelay = delayError + ...
 shifts = 1 / (configuration.chippingFrequency * numberOfTaps) *...
     (0 : 1 : numberOfTaps);
 
-shiftedDelayMatrix = correlationsDelay' + shifts;
+shiftedDelayMatrix = correlationsDelay.' + shifts;
 
 shiftedCorrelations = autocorrelation(shiftedDelayMatrix, configuration);
 
