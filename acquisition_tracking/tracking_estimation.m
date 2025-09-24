@@ -106,19 +106,32 @@ for k = 2 : simulationSteps
     wipedSignal = receivedSignal .* conj(carrierCorrection);
     
     %% Multi-Correlator 
+
+    % HACK(Rodrigo): I used the (known and fixed) value of 1e-4 to debug
+    % buildCorrelatorBank.
     delayAPriori = 1e-4;%x_LQG_k(1);
-    % NOTE: Maybe we should substitute `configuration.chippingFrequency`
-    % by `configuration.samplingFrequency`, no?
-    delaysVector = delayAPriori + ...
-        1 / (configuration.chippingFrequency * q) * ...
-        (-q : 1 : q);
-    correlatorBank = zeros(length(delaysVector), ...
-        samplesTotal);
-    for i = 1:length(delaysVector)
-        correlatorBank(i,:) = reference_signal(configuration, ...
-                    delaysVector(i))';
-    end
+
+    % NOTE(Rodrigo): This buildCorrelatorBank is a new function that i 
+    % created to build the correlator bank. In my understanding, we were
+    % building the correlator bank in an incorrect manner previously, since
+    % the samples delay were being computed individually for each code
+    % replica. I think it is better to compute a single delay in samples
+    % and then use it to build the correlator bank by shifting a code
+    % replica using integer values of samples delay.
+    correlatorBank = buildCorrelatorBank(configuration, delayAPriori, q);
+
+    % delaysVector = delayAPriori + ...
+    %     1 / (configuration.chippingFrequency * q) * ...
+    %     (-q : 1 : q);
+    % correlatorBank = zeros(length(delaysVector), ...
+    %     samplesTotal);
+    % for i = 1:length(delaysVector)
+    %     correlatorBank(i,:) = reference_signal(configuration, ...
+    %                 delaysVector(i))';
+    % end
     
+    %NOTE(Rodrigo): Put now a debug in measurementEstimate and plot
+    % measurement. You can now see a perfect triangle, as we would expect.
     measurement = correlatorBank * wipedSignal / samplesTotal;
     measurementEstimative = measurementFunction(stateAPriori, ...
         configuration) / samplesTotal;
