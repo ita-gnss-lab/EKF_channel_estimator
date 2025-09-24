@@ -131,11 +131,18 @@ for k = 2 : simulationSteps
     %                 delaysVector(i))';
     % end
     
-    %NOTE(Rodrigo): Put now a debug in measurementEstimate and plot
+    % NOTE(Rodrigo): Put now a debug in measurementEstimate and plot
     % measurement. You can now see a perfect triangle, as we would expect.
     measurement = correlatorBank * wipedSignal / samplesTotal;
-    measurementEstimative = measurementFunction(stateAPriori, ...
+
+    % HACK(Rodrigo): I'm aritfically inputing the perfect version of, 
+    % StateAPriori, so we can further modify the measurementFunction
+    % function so that the shape of the correlation matches what we are
+    % getting from the buildCorrelatorBank function.
+    measurementEstimative = measurementFunction([zeros(4,1);1;zeros(q, 1)], ...
         configuration) / samplesTotal;
+    % measurementEstimative = measurementFunction([stateAPriori, ...
+    %     configuration) / samplesTotal;
 
     % ---- Plot routine -----
     plot(abs(measurement));
