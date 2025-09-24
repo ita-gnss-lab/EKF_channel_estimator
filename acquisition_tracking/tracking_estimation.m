@@ -3,8 +3,9 @@ load config_no_doppler.mat
 rng(26437226);
 
 %% Parameters
-simulationSteps = 3000;
-q = 5;
+simulationSteps = 500;
+q = 2;
+C = 2*q + 1;
 middleSample = q + 1;
 epoch = configuration.totalChips / configuration.chippingFrequency;
 
@@ -28,7 +29,7 @@ Q = getStateCovarianceMatrix(...
 %% State History Vectors
 LQGStateRecord = zeros(4, simulationSteps);
 errorStateRecord = zeros(4, simulationSteps);
-innovationRecord = zeros(5, simulationSteps);
+innovationRecord = zeros(C, simulationSteps);
 
 %% Transition Matrices
 [F_W, F_H] = ...
@@ -109,7 +110,7 @@ for k = 2 : simulationSteps
 
     % HACK(Rodrigo): I used the (known and fixed) value of 1e-4 to debug
     % buildCorrelatorBank.
-    delayAPriori = 1e-4;%x_LQG_k(1);
+    delayAPriori = 1e-4; %x_LQG_k(1);
 
     % NOTE(Rodrigo): This buildCorrelatorBank is a new function that i 
     % created to build the correlator bank. In my understanding, we were
@@ -137,11 +138,11 @@ for k = 2 : simulationSteps
         configuration) / samplesTotal;
 
     % ---- Plot routine -----
-    % plot(abs(measurement));
-    % hold on;
-    % plot(abs(measurementEstimative));
-    % hold off;
-    % pause(0.1)
+    plot(abs(measurement));
+    hold on;
+    plot(abs(measurementEstimative));
+    hold off;
+    pause(0.1)
 
     noiseCovarianceMatrix = ...
         (thermalNoiseVarianceSquared / samplesTotal.^2) * ...
@@ -149,15 +150,15 @@ for k = 2 : simulationSteps
     
     %% Compute Jacobian
     % delayJacobian = delayJacobianFunction(stateAPriori, configuration) / samplesTotal;
-    % delayJacobian = [1/configuration.chippingFrequency ; 1/configuration.chippingFrequency ; 0 ; -1/configuration.chippingFrequency; -1/configuration.chippingFrequency];
-    delayJacobian = delayJacobianFunctionSimplified( ...
-        stateAPriori(1), ...
-        stateAPriori(5:end), ...
-        1 / configuration.samplingFrequency, ...
-        q, ...
-        1 / configuration.chippingFrequency, ...
-        sqrt(1) * exp(1j * stateAPriori(2))  ...
-    );
+    delayJacobian = [1/configuration.chippingFrequency ; 1/configuration.chippingFrequency ; 0 ; -1/configuration.chippingFrequency; -1/configuration.chippingFrequency];
+    % delayJacobian = delayJacobianFunctionSimplified( ...
+    %     stateAPriori(1), ...
+    %     stateAPriori(5:end), ...
+    %     1 / configuration.samplingFrequency, ...
+    %     q, ...
+    %     1 / configuration.chippingFrequency, ...
+    %     sqrt(1) * exp(1j * stateAPriori(2))  ...
+    % );
     phaseJacobian = 1j * measurementEstimative;
     dopplerJacobian = zeros(2*q + 1, 2);
     channelWeightsJacobian = exp(1j * stateAPriori(2)) .* ...
@@ -173,13 +174,13 @@ for k = 2 : simulationSteps
     % HACK: The inversion of the matrix is hard-coded to use an eye(5) (and
     % eye(7) somewhere else) matrix. We need to make it more general later.
     kalmanGain = stateCovarianceMatrixAPriori * jacobian'...
-        *((jacobian * stateCovarianceMatrixAPriori * jacobian' + noiseCovarianceMatrix) \ eye(5));
+        *((jacobian * stateCovarianceMatrixAPriori * jacobian' + noiseCovarianceMatrix) \ eye(C));
 
     innovation = measurement - measurementEstimative;
     innovationRecord(:, k) = innovation;
     x_hat_k_k = stateAPriori + kalmanGain * innovation;
     x_hat_k_k(WienerStatesSelection) = real(x_hat_k_k(WienerStatesSelection));
-    P_k_k = (eye(7) - kalmanGain*jacobian) * ...
+    P_k_k = (eye(q + 1 + 4) - kalmanGain*jacobian) * ...
         stateCovarianceMatrixAPriori;
     
     %% Control Signal Computation
@@ -201,7 +202,7 @@ xlabel("Epochs (Simulation Steps)");
 % Observe the innovation sequence time series
 figure(Name="Middle tap of the innovation sequence", NumberTitle="off");
 plot(epochVector, abs(innovationRecord(middleSample,:)));
-ylabel("Innovation sequence of the middle tap (3)");
+ylabel("Innovation sequence of the middle tap");
 xlabel("Epochs (Simulation Steps)");
 
 figure(Name="Delay Estimation", NumberTitle="off");
