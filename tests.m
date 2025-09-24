@@ -35,7 +35,7 @@ gsa = gnssSignalAcquirer( ...
 % that the code-phase offset is changing over time, as you also have shown
 % in your section below, where you plot the correlation of the first
 % PR-code block with shifted samples over time.
-samplesOffset = 1000;
+samplesOffset = 0;
 [acqtable, corrmat] = gsa(simulatedSignal(samplesOffset + 1: (samplesOffset + configuration.samplingFrequency*1e-3)), 1);
 disp("Code-Phase Offset: " + num2str(acqtable.CodePhaseOffset));
 disp("Coarse Doppler Shift: " + num2str(acqtable.FrequencyOffset));

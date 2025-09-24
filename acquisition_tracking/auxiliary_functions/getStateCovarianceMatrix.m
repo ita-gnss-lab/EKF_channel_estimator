@@ -1,4 +1,4 @@
-function [stateCovarianceMatrix] = getCovarianceMatrix(varianceSquared, epoch, carrierFrequency, numberOfTaps)
+function [stateCovarianceMatrix] = getStateCovarianceMatrix(varianceSquared, epoch, carrierFrequency, numberOfTaps)
 %GETCOVARIANCEMATRIX Summary of this function goes here
 %   Detailed explanation goes here
 beta = 1 / (2 * pi * carrierFrequency);
