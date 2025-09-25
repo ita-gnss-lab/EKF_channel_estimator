@@ -1,4 +1,4 @@
-clearvars; clc;
+clearvars; clc; close all;
 
 addpath(genpath(fullfile("..", "..","EKF_channel_estimator")));
 
@@ -47,7 +47,7 @@ F = blkdiag(...
 
 %% Cost Functions
 beta = 1 / (2 * pi * configuration.carrierFrequency);
-relation = 1e-18;
+relation = 0.9;
 T_e =  relation * blkdiag(beta, 1, 1/epoch, 2/epoch^2);
 T_u =  blkdiag(beta, 1, 1/epoch, 2/epoch^2);
 
@@ -71,7 +71,7 @@ channelCovarianceMatrix(1,1) = 0.001;
 P_k_k = blkdiag(1e-8, (2*pi)^2/12, (50)^2/12, 0.2^2/12, channelCovarianceMatrix);
 % stateCovarianceMatrixAPosteriori = blkdiag(0, 0, 0, 0, zeros(1 + numberOfTaps));
 
-x_LQG_k = [1e-4 configuration.dopplerProfile].';
+x_LQG_k = [1.01e-4 configuration.dopplerProfile].';
 
 u_LQG = L * x_hat_k_k(WienerStatesSelection);
 
@@ -80,6 +80,7 @@ u_LQG = L * x_hat_k_k(WienerStatesSelection);
 samplesTotal = epoch*configuration.samplingFrequency;
 
 %% Simulation
+plotMeasures = false;
 for k = 2 : simulationSteps
     %% Forward Step
     stateAPriori = F * x_hat_k_k;  
@@ -149,13 +150,15 @@ for k = 2 : simulationSteps
     %     configuration) / samplesTotal;
     measurementEstimative = measurementFunction(stateAPriori, ...
         configuration) / samplesTotal;
-
-    % ---- Plot routine -----
-    % plot(abs(measurement));
-    % hold on;
-    % plot(abs(measurementEstimative));
-    % hold off;
-    % pause(0.1)
+    
+    if plotMeasures
+        % ---- Plot routine -----
+        plot(abs(measurement));
+        hold on;
+        plot(abs(measurementEstimative));
+        hold off;
+        pause(0.1)
+    end
 
     noiseCovarianceMatrix = ...
         (thermalNoiseVarianceSquared / samplesTotal.^2) * ...
