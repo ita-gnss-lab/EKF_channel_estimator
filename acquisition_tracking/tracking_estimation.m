@@ -1,4 +1,4 @@
-clearvars; clc;
+clearvars; clc; close all;
 
 addpath(genpath(fullfile("..", "..","EKF_channel_estimator")));
 
@@ -6,7 +6,7 @@ load config_no_doppler.mat
 rng(26437226);
 
 %% Parameters
-simulationSteps = 5000;
+simulationSteps = 500;
 q = 2;
 C = 2*q + 1;
 middleSample = q + 1;
@@ -80,6 +80,7 @@ u_LQG = L * x_hat_k_k(WienerStatesSelection);
 samplesTotal = epoch*configuration.samplingFrequency;
 
 %% Simulation
+plotMeasures = false;
 for k = 2 : simulationSteps
     %% Forward Step
     stateAPriori = F * x_hat_k_k;  
@@ -149,13 +150,15 @@ for k = 2 : simulationSteps
     %     configuration) / samplesTotal;
     measurementEstimative = measurementFunction(stateAPriori, ...
         configuration) / samplesTotal;
-
-    % ---- Plot routine -----
-    % plot(abs(measurement));
-    % hold on;
-    % plot(abs(measurementEstimative));
-    % hold off;
-    % pause(0.1)
+    
+    if plotMeasures
+        % ---- Plot routine -----
+        plot(abs(measurement));
+        hold on;
+        plot(abs(measurementEstimative));
+        hold off;
+        pause(0.1)
+    end
 
     noiseCovarianceMatrix = ...
         (thermalNoiseVarianceSquared / samplesTotal.^2) * ...
