@@ -6,7 +6,7 @@ load config_no_doppler.mat
 rng(26437226);
 
 %% Parameters
-simulationSteps = 500;
+simulationSteps = 5000;
 q = 2;
 C = 2*q + 1;
 middleSample = q + 1;
@@ -21,7 +21,7 @@ carrierToNoiseRatioLinear = 10^(configuration.carrierToNoiseDensityRatio / 10);
 % Compute the noise variance
 thermalNoiseVarianceSquared = configuration.samplingFrequency / carrierToNoiseRatioLinear;
 
-sigma2WVec = [1e-2 1e-6 1e-6 1e-6 1e-6];
+sigma2WVec = [1e-4 1e-6 1e-6 1e-6 1e-6];
 Q = getStateCovarianceMatrix(...
     sigma2WVec, ...
     epoch, ...
@@ -47,7 +47,7 @@ F = blkdiag(...
 
 %% Cost Functions
 beta = 1 / (2 * pi * configuration.carrierFrequency);
-relation = 1e-18;
+relation = 0.3;
 T_e =  relation * blkdiag(beta, 1, 1/epoch, 2/epoch^2);
 T_u =  blkdiag(beta, 1, 1/epoch, 2/epoch^2);
 
@@ -65,13 +65,13 @@ B_LQG = eye(4);
 x_hat_k_k = zeros(q + 5, 1);
 x_hat_k_k(5) = 1;
 
-channelCovarianceMatrix = 0.0001 * eye(1 + q);
-channelCovarianceMatrix(1,1) = 0.001;
+channelCovarianceMatrix = 0.000001 * eye(1 + q);
+channelCovarianceMatrix(1,1) = 0.01;  
 
 P_k_k = blkdiag(1e-8, (2*pi)^2/12, (50)^2/12, 0.2^2/12, channelCovarianceMatrix);
 % stateCovarianceMatrixAPosteriori = blkdiag(0, 0, 0, 0, zeros(1 + numberOfTaps));
 
-x_LQG_k = [1e-4 configuration.dopplerProfile].';
+x_LQG_k = [0.995e-4 configuration.dopplerProfile].';
 
 u_LQG = L * x_hat_k_k(WienerStatesSelection);
 
