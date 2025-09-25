@@ -31,11 +31,15 @@ sampledCode = rangingCode(currentChip);
 delayInSamples = round(LOSDelay * configuration.samplingFrequency);
 delayedCode = circshift(sampledCode, delayInSamples);
 % Applies the phase
-receivedSignal = delayedCode .* exp(1j*LOSPhase);
+distorted_code = delayedCode .* exp(1j*LOSPhase);
 
 %% THERMAL NOISE
-% noise = get_simple_thermal_noise(length(time), 1 / configuration.samplingFrequency, configuration.carrierToNoiseDensityRatio);
-% received_signal = distorted_code + noise; 
+if configuration.addNoise 
+    noise = get_simple_thermal_noise(length(time), 1 / configuration.samplingFrequency, configuration.carrierToNoiseDensityRatio);
+    receivedSignal = distorted_code + noise; 
+else
+    receivedSignal = distorted_code;
+end
 
 end
 

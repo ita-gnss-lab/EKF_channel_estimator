@@ -76,6 +76,7 @@ x_LQG_k = [0.995e-4 configuration.dopplerProfile].';
 u_LQG = L * x_hat_k_k(WienerStatesSelection);
 
 %% Simulate Signal
+configuration.addNoise = true;
 [simulatedSignal, ~] = gnssReceivedSignal(configuration, simulationSteps + 1);
 samplesTotal = epoch*configuration.samplingFrequency;
 
