@@ -1,11 +1,12 @@
-function [receivedSignal, time] = gnss_received_signal(configuration, numberOfEpochs)
+function [receivedSignal, time] = gnssReceivedSignal(configuration, numberOfEpochs)
 %   GNSS_RECEIVED_SIGNAL
 %   Detailed explanation goes here
 
 N = numberOfEpochs * configuration.totalChips * ...
             (configuration.samplingFrequency / configuration.chippingFrequency);
 % Time vector
-time = (0 :  N - 1) / configuration.samplingFrequency;
+n = 0:(N-1);
+time = n / configuration.samplingFrequency;
 
 %% TRANSMITTED PILOT SIGNAL
 % Gets the code in bits; 0 and 1
@@ -13,7 +14,11 @@ PRNCode = gnssCACode(configuration.satellite, "GPS");
 % Remaps to +1 and -1
 rangingCode = double(2*PRNCode - 1);
 % Samples it
-currentChip = floor(mod((time * configuration.chippingFrequency), numel(PRNCode)) + 1);
+% NOTE(Rodrigo): It was not okay to use time *% configuration.chippingFrequency. 
+% That is because time was a float, and it was causing some rounding errors
+% sometimes. This was the cause of the incorrect triangle shape that we 
+% were observing in the plots.
+currentChip = floor(mod(n * (configuration.chippingFrequency / configuration.samplingFrequency), numel(PRNCode)) + 1);
 sampledCode = rangingCode(currentChip);  
 
 %% LOS PHASE AND DELAY
