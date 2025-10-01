@@ -1,4 +1,4 @@
-function [receivedSignal, time] = gnssReceivedSignal(configuration, numberOfEpochs)
+function [receivedSignal, time, LOSPhase, LOSDelay] = gnssReceivedSignal(configuration, numberOfEpochs)
 %   GNSS_RECEIVED_SIGNAL
 %   Detailed explanation goes here
 

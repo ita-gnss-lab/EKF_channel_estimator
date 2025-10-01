@@ -2,7 +2,7 @@ clearvars; clc; close all;
 
 addpath(genpath(fullfile("..", "..","EKF_channel_estimator")));
 
-load config_no_doppler.mat
+load config_cte_doppler.mat
 rng(26437226);
 
 %% Parameters
@@ -21,7 +21,7 @@ carrierToNoiseRatioLinear = 10^(configuration.carrierToNoiseDensityRatio / 10);
 % Compute the noise variance
 thermalNoiseVarianceSquared = configuration.samplingFrequency / carrierToNoiseRatioLinear;
 
-sigma2WVec = [1e-4 1e-6 1e-6 1e-6 1e-6];
+sigma2WVec = [1e-4 1e-8 1e-6 1e-6 1e-6];
 Q = getStateCovarianceMatrix(...
     sigma2WVec, ...
     epoch, ...
@@ -47,7 +47,7 @@ F = blkdiag(...
 
 %% Cost Functions
 beta = 1 / (2 * pi * configuration.carrierFrequency);
-relation = 0.3;
+relation = 0.2;
 T_e =  relation * blkdiag(beta, 1, 1/epoch, 2/epoch^2);
 T_u =  blkdiag(beta, 1, 1/epoch, 2/epoch^2);
 
@@ -66,23 +66,23 @@ x_hat_k_k = zeros(q + 5, 1);
 x_hat_k_k(5) = 1;
 
 channelCovarianceMatrix = 0.000001 * eye(1 + q);
-channelCovarianceMatrix(1,1) = 0.01;  
+channelCovarianceMatrix(1,1) = 0.001;  
 
-P_k_k = blkdiag(1e-8, (2*pi)^2/12, (50)^2/12, 0.2^2/12, channelCovarianceMatrix);
+P_k_k = blkdiag(1e-9, 10*(2*pi)^2/12, 0.0001*(50)^2/12, 0, channelCovarianceMatrix); 
 % stateCovarianceMatrixAPosteriori = blkdiag(0, 0, 0, 0, zeros(1 + numberOfTaps));
 
-x_LQG_k = [0.995e-4 configuration.dopplerProfile].';
+x_LQG_k = [1e-4 configuration.dopplerProfile].';
 
 u_LQG = L * x_hat_k_k(WienerStatesSelection);
 
 %% Simulate Signal
-configuration.addNoise = true;
-[simulatedSignal, ~] = gnssReceivedSignal(configuration, simulationSteps + 1);
+configuration.addNoise = false;
+[simulatedSignal, ~, LOSPhase, LOSDelay] = gnssReceivedSignal(configuration, simulationSteps + 1);
 samplesTotal = epoch*configuration.samplingFrequency;
 
 %% Simulation
 plotMeasures = false;
-for k = 2 : simulationSteps
+for k = 1 : simulationSteps
     %% Forward Step
     stateAPriori = F * x_hat_k_k;  
     stateAPriori(WienerStatesSelection) = real(stateAPriori(WienerStatesSelection));
@@ -108,7 +108,7 @@ for k = 2 : simulationSteps
     % Carrier Wipe-Off
     [totalPhaseAPriori, actualUsedDelay, ~] = get_LOS_dynamics(...
         time, ...
-        configuration.dopplerProfile, ...  %carrierState(2:4).'
+         x_LQG_k(2:4).', ...  % configuration.dopplerProfile
         configuration.carrierFrequency);
     carrierCorrection = exp(1j * totalPhaseAPriori);
     
@@ -225,7 +225,7 @@ xlabel("Epochs (Simulation Steps)");
 figure(Name="Delay Estimation", NumberTitle="off");
 plot(epochVector, LQGStateRecord(1,:));
 hold on;
-plot(1e-4 * ones(1, simulationSteps));
+plot(epochVector, LOSDelay(epochVector*4000));
 ylabel("Delay estimate");
 xlabel("Epochs (Simulation Steps)");
 
@@ -234,4 +234,33 @@ plot(errorStateRecord(1, :));
 hold on;
 plot(epochVector, zeros(1, simulationSteps));
 ylabel("Delay error estimate");
+xlabel("Epochs (Simulation Steps)");
+
+figure(Name="Phase Estimation", NumberTitle="off");
+plot(epochVector, LQGStateRecord(2,:));
+hold on;
+plot(epochVector, LOSPhase(400*epochVector));
+ylabel("Doppler estimate");
+xlabel("Epochs (Simulation Steps)");
+
+figure(Name="Phase Error State", NumberTitle="off");
+plot(errorStateRecord(2, :));
+hold on;
+plot(epochVector, zeros(1, simulationSteps));
+ylabel("Doppler error estimate");
+xlabel("Epochs (Simulation Steps)");
+
+
+figure(Name="Doppler Estimation", NumberTitle="off");
+plot(epochVector, LQGStateRecord(3,:));
+hold on;
+plot(epochVector, 1000*ones(1, simulationSteps));
+ylabel("Doppler estimate");
+xlabel("Epochs (Simulation Steps)");
+
+figure(Name="Doppler Error State", NumberTitle="off");
+plot(errorStateRecord(3, :));
+hold on;
+plot(epochVector, zeros(1, simulationSteps));
+ylabel("Doppler error estimate");
 xlabel("Epochs (Simulation Steps)");
