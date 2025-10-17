@@ -21,7 +21,7 @@ carrierToNoiseRatioLinear = 10^(configuration.carrierToNoiseDensityRatio / 10);
 % Compute the noise variance
 thermalNoiseVarianceSquared = configuration.samplingFrequency / carrierToNoiseRatioLinear;
 
-sigma2Vec = [1e-4 1e-8 1e-6 1e-6 0];
+sigma2Vec = [1e-6 1e-2 1e-2 1e-10 0];
 Q = getStateCovarianceMatrix(...
     sigma2Vec, ...
     epoch, ...
@@ -42,7 +42,7 @@ F = blkdiag(F_W, F_H);
 
 %% Cost Functions
 beta = 1 / (2 * pi * configuration.carrierFrequency);
-relation = 0.5;
+relation = 1e2;
 T_e =  relation * blkdiag(beta, 1, 1/epoch, 2/epoch^2);
 T_u =  blkdiag(beta, 1, 1/epoch, 2/epoch^2);
 
@@ -64,7 +64,7 @@ channelCovarianceMatrix(1,1) = 0; % 0.001;
 P_k_k = blkdiag(1e-1, (2*pi)^2/12, 0.0001*(50)^2/12, 0, channelCovarianceMatrix); 
 % P_k_k = blkdiag(0, 0, 0, 0, zeros(1 + q));
 
-phaseError = 0.5;
+phaseError = 1;
 x_LQG_k = [1.00e-4, ...
     configuration.dopplerProfile(1) + phaseError, ...
     2*pi*configuration.dopplerProfile(2:end)].';
