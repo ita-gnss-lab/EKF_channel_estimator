@@ -65,7 +65,7 @@ P_k_k = blkdiag(1e-1, (2*pi)^2/12, 0.0001*(50)^2/12, 0, channelCovarianceMatrix)
 % P_k_k = blkdiag(0, 0, 0, 0, zeros(1 + q));
 
 phaseError = 0;
-x_LQG_k = [1.00e-4, ...
+x_LQG_k = [1.01e-4, ...
     configuration.dopplerProfile(1) + phaseError, ...
     2*pi*configuration.dopplerProfile(2:end)].';
 
@@ -77,7 +77,7 @@ configuration.addNoise = false;
 samplesTotal = epoch*configuration.samplingFrequency;
 
 %% Simulation
-plotMeasures = true;
+plotMeasures = false;
 for k = 1 : simulationSteps
     %% Forward Step
     x_k_k_1 = F * x_hat_k_k;  
