@@ -21,7 +21,7 @@ carrierToNoiseRatioLinear = 10^(configuration.carrierToNoiseDensityRatio / 10);
 % Compute the noise variance
 thermalNoiseVarianceSquared = configuration.samplingFrequency / carrierToNoiseRatioLinear;
 
-sigma2Vec = [1e-6 1e-2 1e-2 1e-10 0];
+sigma2Vec = [1e-6 1e-2 1e-2 1e-4 0];
 Q = getStateCovarianceMatrix(...
     sigma2Vec, ...
     epoch, ...
@@ -53,8 +53,8 @@ B_LQG = eye(4);
 [~, L, ~] = idare(F_W, B_LQG, T_e, T_u, [], []);
 
 %% Initial State
-x_hat_k_k = zeros(q + 5, 1);
-x_hat_k_k(5) = 1;
+x_k_k = zeros(q + 5, 1);
+x_k_k(5) = 1;
 
 % HACK: I zeroed this initial covariance matrix to my analysis about the
 % phase estimation.
@@ -69,7 +69,7 @@ x_LQG_k = [1.00e-4, ...
     configuration.dopplerProfile(1) + phaseError, ...
     2*pi*configuration.dopplerProfile(2:end)].';
 
-u_LQG = L * x_hat_k_k(WienerStatesSelection);
+u_LQG = L * x_k_k(WienerStatesSelection);
 
 %% Simulate Signal
 configuration.addNoise = false;
@@ -80,13 +80,13 @@ samplesTotal = epoch*configuration.samplingFrequency;
 plotMeasures = false;
 for k = 1 : simulationSteps
     %% Forward Step
-    x_k_k_1 = F * x_hat_k_k;  
+    x_k_k_1 = F * x_k_k;  
     x_k_k_1(WienerStatesSelection) = real(x_k_k_1(WienerStatesSelection));
     P_k_k_1 = F * ...
         P_k_k * F' ...
         + Q;
 
-    errorStateRecord(:, k) = x_hat_k_k(1:4);
+    errorStateRecord(:, k) = x_k_k(1:4);
 
     %% Signal 
     receivedSignal = simulatedSignal(((k - 1) * samplesTotal + 1: k * samplesTotal));
@@ -192,15 +192,15 @@ for k = 1 : simulationSteps
 
     innovation = z_k - z_hat_k;
     innovationRecord(:, k) = innovation;
-    x_hat_k_k = x_k_k_1 + K_k * innovation;
-    x_hat_k_k(WienerStatesSelection) = real(x_hat_k_k(WienerStatesSelection));
-    % x_hat_k_k(5:end) = [1 0 0].';
+    x_k_k = x_k_k_1 + K_k * innovation;
+    x_k_k(WienerStatesSelection) = real(x_k_k(WienerStatesSelection));
+    % x_k_k(5:end) = [1 0 0].';
     P_k_k = (eye(q + 1 + 4) - K_k*jacobian) * ...
         P_k_k_1;
     
     %% Control Signal Computation
     
-    u_LQG = L * x_hat_k_k(WienerStatesSelection);
+    u_LQG = L * x_k_k(WienerStatesSelection);
 end
 %% Plots
 
