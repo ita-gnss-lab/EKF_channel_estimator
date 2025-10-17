@@ -42,7 +42,7 @@ F = blkdiag(F_W, F_H);
 
 %% Cost Functions
 beta = 1 / (2 * pi * configuration.carrierFrequency);
-relation = 0.2;
+relation = 0.5;
 T_e =  relation * blkdiag(beta, 1, 1/epoch, 2/epoch^2);
 T_u =  blkdiag(beta, 1, 1/epoch, 2/epoch^2);
 
@@ -64,8 +64,8 @@ channelCovarianceMatrix(1,1) = 0; % 0.001;
 P_k_k = blkdiag(1e-1, (2*pi)^2/12, 0.0001*(50)^2/12, 0, channelCovarianceMatrix); 
 % P_k_k = blkdiag(0, 0, 0, 0, zeros(1 + q));
 
-phaseError = 0;
-x_LQG_k = [1.01e-4, ...
+phaseError = 0.5;
+x_LQG_k = [1.00e-4, ...
     configuration.dopplerProfile(1) + phaseError, ...
     2*pi*configuration.dopplerProfile(2:end)].';
 
@@ -95,7 +95,7 @@ for k = 1 : simulationSteps
     %% Carrier Removal
     
     % Update State 
-    x_LQG_k = F_W * x_LQG_k - B_LQG * u_LQG;
+    x_LQG_k = F_W * x_LQG_k + B_LQG * u_LQG;
 
     LQGStateRecord(:, k) = x_LQG_k(1:4);
     
@@ -159,9 +159,13 @@ for k = 1 : simulationSteps
         (correlatorBank * correlatorBank.');
     
     %% Compute Jacobian
-    % delayJacobian = delayJacobianFunction(x_k_k_1, configuration) / samplesTotal;
-    % delayJacobian = [1/configuration.chippingFrequency ; 1/configuration.chippingFrequency ; 0 ; -1/configuration.chippingFrequency; -1/configuration.chippingFrequency];
-    delayJacobian = delayJacobianFunctionSimplified( ...
+    % HACK: I needed to put a - sign here to make the system work. I
+    % removed the - sign from the update state 
+    % (x_LQG_k = F_W * x_LQG_k - B_LQG * u_LQG ->
+    % x_LQG_k = F_W * x_LQG_k + B_LQG * u_LQG)
+    % TODO: Look later into delayJacobianFunctionSimplified to see where
+    % i'm putting the - sign incorrectly.
+    delayJacobian = -delayJacobianFunctionSimplified( ...
         x_k_k_1(1), ...
         x_k_k_1(5:end), ...
         1 / configuration.samplingFrequency, ...
@@ -211,48 +215,64 @@ xlabel("Epochs (Simulation Steps)");
 
 % Observe the innovation sequence time series
 figure(Name="Middle tap of the innovation sequence", NumberTitle="off");
-plot(epochVector, abs(innovationRecord(middleSample,:)));
+hold on;
+plot(epochVector, real(innovationRecord(middleSample,:)));
+plot(epochVector, imag(innovationRecord(middleSample,:)));
+legend({"Real", "Imaginary"});
 ylabel("Innovation sequence of the middle tap");
 xlabel("Epochs (Simulation Steps)");
+hold off;
 
 figure(Name="Delay Estimation", NumberTitle="off");
-plot(epochVector, LQGStateRecord(1,:));
 hold on;
+plot(epochVector, LQGStateRecord(1,:));
 plot(epochVector, LOSDelay(epochVector*4000));
+legend({"LQG's estimated delay", "True delay"});
 ylabel("Delay estimate");
 xlabel("Epochs (Simulation Steps)");
+hold off;
 
 figure(Name="Delay Error State", NumberTitle="off");
-plot(errorStateRecord(1, :));
 hold on;
+plot(errorStateRecord(1, :));
 plot(epochVector, zeros(1, simulationSteps));
+legend({"EKF's estimated delay error", "Zero line"});
 ylabel("Delay error estimate");
 xlabel("Epochs (Simulation Steps)");
+hold off;
 
 figure(Name="Phase Estimation", NumberTitle="off");
-plot(epochVector, LQGStateRecord(2,:));
 hold on;
+plot(epochVector, LQGStateRecord(2,:));
 plot(epochVector, LOSPhase(400*epochVector));
+legend({"LQG's estimated phase", "True Phase"});
 ylabel("Doppler estimate");
 xlabel("Epochs (Simulation Steps)");
+hold off;
 
 figure(Name="Phase Error State", NumberTitle="off");
-plot(errorStateRecord(2, :));
 hold on;
+plot(errorStateRecord(2, :));
 plot(epochVector, zeros(1, simulationSteps));
+legend({"EKF's estimated phase error", "Zero line"});
 ylabel("Doppler error estimate");
 xlabel("Epochs (Simulation Steps)");
+hold off;
 
 figure(Name="Doppler Estimation", NumberTitle="off");
-plot(epochVector, LQGStateRecord(3,:));
 hold on;
+plot(epochVector, LQGStateRecord(3,:));
 plot(epochVector, 2*pi*configuration.dopplerProfile(2) * ones(1,length(epochVector)));
+legend({"LQG's estimated Doppler frequency", "True Doppler frequency"});
 ylabel("Doppler estimate");
 xlabel("Epochs (Simulation Steps)");
+hold off;
 
 figure(Name="Doppler Error State", NumberTitle="off");
-plot(errorStateRecord(3, :));
 hold on;
+plot(errorStateRecord(3, :));
 plot(epochVector, zeros(1, simulationSteps));
 ylabel("Doppler error estimate");
 xlabel("Epochs (Simulation Steps)");
+legend({"EKF's estimated Doppler error", "Zero line"});
+hold off;
