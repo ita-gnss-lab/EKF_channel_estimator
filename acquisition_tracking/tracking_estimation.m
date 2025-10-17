@@ -2,7 +2,7 @@ clearvars; clc; close all;
 
 addpath(genpath(fullfile("..", "..","EKF_channel_estimator")));
 
-load config_cte_doppler.mat
+load config_no_doppler.mat
 rng(26437226);
 
 %% Parameters
@@ -21,7 +21,7 @@ carrierToNoiseRatioLinear = 10^(configuration.carrierToNoiseDensityRatio / 10);
 % Compute the noise variance
 thermalNoiseVarianceSquared = configuration.samplingFrequency / carrierToNoiseRatioLinear;
 
-sigma2WVec = [1e-4 1e-8 1e-6 1e-6 1e-6];
+sigma2WVec = [1e-2 1e-8 1e-6 1e-6 0];
 Q = getStateCovarianceMatrix(...
     sigma2WVec, ...
     epoch, ...
@@ -47,7 +47,7 @@ F = blkdiag(...
 
 %% Cost Functions
 beta = 1 / (2 * pi * configuration.carrierFrequency);
-relation = 0.2;
+relation = 0.5;
 T_e =  relation * blkdiag(beta, 1, 1/epoch, 2/epoch^2);
 T_u =  blkdiag(beta, 1, 1/epoch, 2/epoch^2);
 
@@ -71,7 +71,7 @@ channelCovarianceMatrix(1,1) = 0.001;
 P_k_k = blkdiag(1e-9, 10*(2*pi)^2/12, 0.0001*(50)^2/12, 0, channelCovarianceMatrix); 
 % stateCovarianceMatrixAPosteriori = blkdiag(0, 0, 0, 0, zeros(1 + numberOfTaps));
 
-x_LQG_k = [1e-4 configuration.dopplerProfile].';
+x_LQG_k = [1.01e-4 configuration.dopplerProfile].';
 
 u_LQG = L * x_hat_k_k(WienerStatesSelection);
 
@@ -84,9 +84,9 @@ samplesTotal = epoch*configuration.samplingFrequency;
 plotMeasures = false;
 for k = 1 : simulationSteps
     %% Forward Step
-    stateAPriori = F * x_hat_k_k;  
-    stateAPriori(WienerStatesSelection) = real(stateAPriori(WienerStatesSelection));
-    stateCovarianceMatrixAPriori = F * ...
+    x_k_k_1 = F * x_hat_k_k;  
+    x_k_k_1(WienerStatesSelection) = real(x_k_k_1(WienerStatesSelection));
+    P_k_k_1 = F * ...
         P_k_k * F' ...
         + Q;
 
@@ -140,46 +140,45 @@ for k = 1 : simulationSteps
     % end
     
     % NOTE(Rodrigo): Put now a debug in measurementEstimate and plot
-    % measurement. You can now see a perfect triangle, as we would expect.
-    measurement = correlatorBank * wipedSignal / samplesTotal;
+    % z_k. You can now see a perfect triangle, as we would expect.
+    z_k = correlatorBank * wipedSignal / samplesTotal;
 
     % HACK(Rodrigo): I'm aritfically inputing the perfect version of, 
     % StateAPriori, so we can further modify the measurementFunction
     % function so that the shape of the correlation matches what we are
     % getting from the buildCorrelatorBank function.
-    % measurementEstimative = measurementFunction([zeros(4,1);1;zeros(q, 1)], ...
+    % z_hat_k = measurementFunction([zeros(4,1);1;zeros(q, 1)], ...
     %     configuration) / samplesTotal;
-    measurementEstimative = measurementFunction(stateAPriori, ...
+    z_hat_k = measurementFunction(x_k_k_1, ...
         configuration) / samplesTotal;
     
     if plotMeasures
         % ---- Plot routine -----
-        plot(abs(measurement));
+        plot(abs(z_k));
         hold on;
-        plot(abs(measurementEstimative));
+        plot(abs(z_hat_k));
         hold off;
         pause(0.1)
     end
 
-    noiseCovarianceMatrix = ...
-        (thermalNoiseVarianceSquared / samplesTotal.^2) * ...
+    R = (thermalNoiseVarianceSquared / samplesTotal.^2) * ...
         (correlatorBank * correlatorBank.');
     
     %% Compute Jacobian
-    % delayJacobian = delayJacobianFunction(stateAPriori, configuration) / samplesTotal;
+    % delayJacobian = delayJacobianFunction(x_k_k_1, configuration) / samplesTotal;
     % delayJacobian = [1/configuration.chippingFrequency ; 1/configuration.chippingFrequency ; 0 ; -1/configuration.chippingFrequency; -1/configuration.chippingFrequency];
     delayJacobian = delayJacobianFunctionSimplified( ...
-        stateAPriori(1), ...
-        stateAPriori(5:end), ...
+        x_k_k_1(1), ...
+        x_k_k_1(5:end), ...
         1 / configuration.samplingFrequency, ...
         q, ...
         1 / configuration.chippingFrequency, ...
-        sqrt(1) * exp(1j * stateAPriori(2))  ...
+        sqrt(1) * exp(1j * x_k_k_1(2))  ...
     );
-    phaseJacobian = 1j * measurementEstimative;
+    phaseJacobian = 1j * z_hat_k;
     dopplerJacobian = zeros(2*q + 1, 2);
-    channelWeightsJacobian = exp(1j * stateAPriori(2)) .* ...
-        getShiftedCorrelations(stateAPriori(1), q, configuration) / samplesTotal;
+    channelWeightsJacobian = exp(1j * x_k_k_1(2)) .* ...
+        getShiftedCorrelations(x_k_k_1(1), q, configuration) / samplesTotal;
 
     jacobian = [delayJacobian ...
         phaseJacobian ...
@@ -190,16 +189,16 @@ for k = 1 : simulationSteps
     
     % HACK: The inversion of the matrix is hard-coded to use an eye(5) (and
     % eye(7) somewhere else) matrix. We need to make it more general later.
-    kalmanGain = stateCovarianceMatrixAPriori * jacobian'...
-        *((jacobian * stateCovarianceMatrixAPriori * jacobian' + noiseCovarianceMatrix) \ eye(C));
+    K_k = P_k_k_1 * jacobian'...
+        *((jacobian * P_k_k_1 * jacobian' + R) \ eye(C));
 
-    innovation = measurement - measurementEstimative;
+    innovation = z_k - z_hat_k;
     innovationRecord(:, k) = innovation;
-    x_hat_k_k = stateAPriori + kalmanGain * innovation;
+    x_hat_k_k = x_k_k_1 + K_k * innovation;
     x_hat_k_k(WienerStatesSelection) = real(x_hat_k_k(WienerStatesSelection));
     % x_hat_k_k(5:end) = [1 0 0].';
-    P_k_k = (eye(q + 1 + 4) - kalmanGain*jacobian) * ...
-        stateCovarianceMatrixAPriori;
+    P_k_k = (eye(q + 1 + 4) - K_k*jacobian) * ...
+        P_k_k_1;
     
     %% Control Signal Computation
     
@@ -252,9 +251,9 @@ xlabel("Epochs (Simulation Steps)");
 
 
 figure(Name="Doppler Estimation", NumberTitle="off");
-plot(epochVector, LQGStateRecord(3,:));
+plot(epochVector(2:end), LQGStateRecord(3,2:end));
 hold on;
-plot(epochVector, 1000*ones(1, simulationSteps));
+plot(epochVector(2:end), diff(LOSPhase(400*epochVector))/epoch);
 ylabel("Doppler estimate");
 xlabel("Epochs (Simulation Steps)");
 
