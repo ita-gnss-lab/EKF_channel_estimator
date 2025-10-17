@@ -7,7 +7,7 @@ rng(26437226);
 
 %% Parameters
 simulationSteps = 500;
-q = 2;
+q = 5;
 C = 2*q + 1;
 middleSample = q + 1;
 epoch = configuration.totalChips / configuration.chippingFrequency;
@@ -42,7 +42,7 @@ F = blkdiag(F_W, F_H);
 
 %% Cost Functions
 beta = 1 / (2 * pi * configuration.carrierFrequency);
-relation = 0.5;
+relation = 0.2;
 T_e =  relation * blkdiag(beta, 1, 1/epoch, 2/epoch^2);
 T_u =  blkdiag(beta, 1, 1/epoch, 2/epoch^2);
 
@@ -61,11 +61,11 @@ x_hat_k_k(5) = 1;
 channelCovarianceMatrix = 0 * eye(1 + q); %0.000001 * eye(1 + q);
 channelCovarianceMatrix(1,1) = 0; % 0.001;  
 
-P_k_k = blkdiag(1e-9, (2*pi)^2/12, 0.0001*(50)^2/12, 0, channelCovarianceMatrix); 
+P_k_k = blkdiag(1e-1, (2*pi)^2/12, 0.0001*(50)^2/12, 0, channelCovarianceMatrix); 
 % P_k_k = blkdiag(0, 0, 0, 0, zeros(1 + q));
 
 phaseError = 0;
-x_LQG_k = [1.01e-4, ...
+x_LQG_k = [1.00e-4, ...
     configuration.dopplerProfile(1) + phaseError, ...
     2*pi*configuration.dopplerProfile(2:end)].';
 
@@ -77,7 +77,7 @@ configuration.addNoise = false;
 samplesTotal = epoch*configuration.samplingFrequency;
 
 %% Simulation
-plotMeasures = false;
+plotMeasures = true;
 for k = 1 : simulationSteps
     %% Forward Step
     x_k_k_1 = F * x_hat_k_k;  
