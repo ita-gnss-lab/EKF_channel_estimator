@@ -21,9 +21,9 @@ carrierToNoiseRatioLinear = 10^(configuration.carrierToNoiseDensityRatio / 10);
 % Compute the noise variance
 thermalNoiseVarianceSquared = configuration.samplingFrequency / carrierToNoiseRatioLinear;
 
-sigma2WVec = [1e-2 1e-8 1e-6 1e-6 0];
+sigma2Vec = [1e-4 1e-8 1e-6 1e-6 0];
 Q = getStateCovarianceMatrix(...
-    sigma2WVec, ...
+    sigma2Vec, ...
     epoch, ...
     configuration.carrierFrequency, ...
     q);
@@ -35,15 +35,10 @@ channelStateRecord = zeros(3, simulationSteps);
 innovationRecord = zeros(C, simulationSteps);
 
 %% Transition Matrices
-[F_W, F_H] = ...
-    getModelTransitionMatrix(...
-    epoch, ...
-    configuration.carrierFrequency, ...
-    q);
+[F_W, F_H] = getModelTransitionMatrix( epoch, ...
+    configuration.carrierFrequency, q);
 
-F = blkdiag(...
-    F_W,...
-    F_H);
+F = blkdiag(F_W, F_H);
 
 %% Cost Functions
 beta = 1 / (2 * pi * configuration.carrierFrequency);
@@ -55,23 +50,24 @@ T_u =  blkdiag(beta, 1, 1/epoch, 2/epoch^2);
 B_LQG = eye(4);
 
 %% IDARE Solution
-[~, L, ~] = idare(F_W, ...
-    B_LQG, ...
-    T_e, ...
-    T_u, ...
-    [], []);
+[~, L, ~] = idare(F_W, B_LQG, T_e, T_u, [], []);
 
 %% Initial State
 x_hat_k_k = zeros(q + 5, 1);
 x_hat_k_k(5) = 1;
 
-channelCovarianceMatrix = 0.000001 * eye(1 + q);
-channelCovarianceMatrix(1,1) = 0.001;  
+% HACK: I zeroed this initial covariance matrix to my analysis about the
+% phase estimation.
+channelCovarianceMatrix = 0 * eye(1 + q); %0.000001 * eye(1 + q);
+channelCovarianceMatrix(1,1) = 0; % 0.001;  
 
-P_k_k = blkdiag(1e-9, 10*(2*pi)^2/12, 0.0001*(50)^2/12, 0, channelCovarianceMatrix); 
-% stateCovarianceMatrixAPosteriori = blkdiag(0, 0, 0, 0, zeros(1 + numberOfTaps));
+P_k_k = blkdiag(1e-9, (2*pi)^2/12, 0.0001*(50)^2/12, 0, channelCovarianceMatrix); 
+% P_k_k = blkdiag(0, 0, 0, 0, zeros(1 + q));
 
-x_LQG_k = [1.01e-4 configuration.dopplerProfile].';
+phaseError = 0;
+x_LQG_k = [1.01e-4, ...
+    configuration.dopplerProfile(1) + phaseError, ...
+    2*pi*configuration.dopplerProfile(2:end)].';
 
 u_LQG = L * x_hat_k_k(WienerStatesSelection);
 
@@ -99,9 +95,7 @@ for k = 1 : simulationSteps
     %% Carrier Removal
     
     % Update State 
-    x_LQG_k = ...
-        F_W * x_LQG_k - ...
-        B_LQG * u_LQG;
+    x_LQG_k = F_W * x_LQG_k - B_LQG * u_LQG;
 
     LQGStateRecord(:, k) = x_LQG_k(1:4);
     
@@ -249,11 +243,10 @@ plot(epochVector, zeros(1, simulationSteps));
 ylabel("Doppler error estimate");
 xlabel("Epochs (Simulation Steps)");
 
-
 figure(Name="Doppler Estimation", NumberTitle="off");
-plot(epochVector(2:end), LQGStateRecord(3,2:end));
+plot(epochVector, LQGStateRecord(3,:));
 hold on;
-plot(epochVector(2:end), diff(LOSPhase(400*epochVector))/epoch);
+plot(epochVector, 2*pi*configuration.dopplerProfile(2) * ones(1,length(epochVector)));
 ylabel("Doppler estimate");
 xlabel("Epochs (Simulation Steps)");
 

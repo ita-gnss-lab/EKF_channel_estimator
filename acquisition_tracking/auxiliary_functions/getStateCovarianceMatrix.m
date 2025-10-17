@@ -1,4 +1,4 @@
-function [stateCovarianceMatrix] = getStateCovarianceMatrix(varianceSquared, epoch, carrierFrequency, numberOfTaps)
+function [stateCovarianceMatrix] = getStateCovarianceMatrix(sigma2Vec, epoch, carrierFrequency, numberOfTaps)
 %GETCOVARIANCEMATRIX Summary of this function goes here
 %   Detailed explanation goes here
 beta = 1 / (2 * pi * carrierFrequency);
@@ -21,12 +21,12 @@ thirdOrder = [
 (T^3 * beta / 6)    (T^3 / 6)         (T^2 / 2)         T
 ];
 
-errorStateCovariance = varianceSquared(1) * zeroOrder ...
-    + varianceSquared(2) * firstOrder ...
-    + varianceSquared(3) * secondOrder ...
-    + varianceSquared(4) * thirdOrder;
+errorStateCovariance = sigma2Vec(1) * zeroOrder ...
+    + sigma2Vec(2) * firstOrder ...
+    + sigma2Vec(3) * secondOrder ...
+    + sigma2Vec(4) * thirdOrder;
 
-channelStateCovariance = varianceSquared(5) * eye(numberOfTaps + 1);
+channelStateCovariance = sigma2Vec(5) * eye(numberOfTaps + 1);
 
 stateCovarianceMatrix = blkdiag(errorStateCovariance, channelStateCovariance);
 end
