@@ -1,7 +1,6 @@
-function [stateCovarianceMatrix] = getStateCovarianceMatrix(sigma2Vec, epoch, carrierFrequency, numberOfTaps)
+function [stateCovarianceMatrix] = getStateCovarianceMatrix(sigma2Vec, epoch, beta, numberOfTaps)
 %GETCOVARIANCEMATRIX Summary of this function goes here
 %   Detailed explanation goes here
-beta = -1 / (2 * pi * carrierFrequency);
 T = epoch;
 
 zeroOrder = zeros(4);

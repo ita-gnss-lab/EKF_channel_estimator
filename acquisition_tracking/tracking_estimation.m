@@ -14,8 +14,7 @@ epoch = configuration.totalChips / configuration.chippingFrequency;
 configuration.correlatorHalfSpan = q;
 samplesTotal = epoch*configuration.samplingFrequency;
 timeSupport = (0:(samplesTotal - 1)).' * (1/configuration.samplingFrequency);
-
-% NOTE: These were not being used
+beta = -1 / (2 * pi * configuration.carrierFrequency);
 WienerStatesSelection = 1:4;
 
 %% Covariances 
@@ -24,11 +23,11 @@ carrierToNoiseRatioLinear = 10^(configuration.carrierToNoiseDensityRatio / 10);
 % Compute the noise variance
 thermalNoiseVarianceSquared = configuration.samplingFrequency / carrierToNoiseRatioLinear;
 
-sigma2Vec = [1e-1 1e-1 1e-3 2.6*10^(-6) 0];
+sigma2Vec = [1e-1 1e-1 1e-2 2.6*10^(-1) 0];
 Q = getStateCovarianceMatrix(...
     sigma2Vec, ...
     epoch, ...
-    configuration.carrierFrequency, ...
+    beta, ...
     q);
 correlatorBank = buildCorrelatorBank(configuration, 0, q);
 R = (thermalNoiseVarianceSquared / samplesTotal.^2) * ...
@@ -41,10 +40,9 @@ channelStateRecord = zeros(3, simulationSteps);
 innovationRecord = zeros(C, simulationSteps);
 
 %% Cost Functions
-beta = 1 / (2 * pi * configuration.carrierFrequency);
-relation = 0.5;
-T_e =  relation * diag([beta, 1, 1/epoch, 2/epoch^2]);
-T_u =  diag([beta, 1, 1/epoch, 2/epoch^2]);
+relation = 0.3;
+T_e =  relation * diag([1, 1, 1/epoch, 2/epoch^2]);
+T_u =  diag([1, 1, 1/epoch, 2/epoch^2]);
 
 %% Transition Matrices
 [F_W, F_H] = getModelTransitionMatrix(epoch, q, beta);
@@ -74,8 +72,8 @@ channelCovarianceMatrix(1,1) = 0; % 0.001;
 P_k_k_1 = blkdiag(1e-1, (2*pi)^2/12, (50)^2/12, 0, channelCovarianceMatrix); 
 % P_k_k_1 = blkdiag(0, 0, 0, 0, zeros(1 + q));
 
-phaseError = 0.5;
-DopplerError = 0;
+phaseError = 0;
+DopplerError = 1;
 x_LQG_k = [1.000e-4, ...
     configuration.dopplerProfile(1) + phaseError, ...
     2*pi*(configuration.dopplerProfile(2) + DopplerError), ...
