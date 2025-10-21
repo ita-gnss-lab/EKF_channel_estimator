@@ -12,6 +12,8 @@ C = 2*q + 1;
 middleSample = q + 1;
 epoch = configuration.totalChips / configuration.chippingFrequency;
 configuration.correlatorHalfSpan = q;
+samplesTotal = epoch*configuration.samplingFrequency;
+timeSupport = (0:(samplesTotal - 1)).' * (1/configuration.samplingFrequency);
 
 % NOTE: These were not being used
 WienerStatesSelection = 1:4;
@@ -22,12 +24,15 @@ carrierToNoiseRatioLinear = 10^(configuration.carrierToNoiseDensityRatio / 10);
 % Compute the noise variance
 thermalNoiseVarianceSquared = configuration.samplingFrequency / carrierToNoiseRatioLinear;
 
-sigma2Vec = [1e-4 1e0 1e-1 1e-2 0];
+sigma2Vec = [1e-1 1e-1 1e-3 2.6*10^(-6) 0];
 Q = getStateCovarianceMatrix(...
     sigma2Vec, ...
     epoch, ...
     configuration.carrierFrequency, ...
     q);
+correlatorBank = buildCorrelatorBank(configuration, 0, q);
+R = (thermalNoiseVarianceSquared / samplesTotal.^2) * ...
+        (correlatorBank * correlatorBank.');
 
 %% State History Vectors
 LQGStateRecord = zeros(4, simulationSteps);
@@ -54,50 +59,44 @@ B_LQG = eye(4);
 %% Full transition matrix
 F = blkdiag(F_W - L, F_H);
 
-%% Initial State
-x_k_k = zeros(q + 5, 1);
-x_k_k(5) = 1;
+%% Initialization
+% NOTE: I changed from x_k_k to x_k_k_1, because, in fact the
+% initialization uses x[1|0].
+x_k_k_1 = zeros(q + 5, 1);
+x_k_k_1(5) = 1;
 
 % HACK: I zeroed this initial covariance matrix to my analysis about the
 % phase estimation.
 channelCovarianceMatrix = 0 * eye(1 + q); %0.000001 * eye(1 + q);
 channelCovarianceMatrix(1,1) = 0; % 0.001;  
 
-P_k_k = blkdiag(1e-1, (2*pi)^2/12, (50)^2/12, 0, channelCovarianceMatrix); 
-% P_k_k = blkdiag(0, 0, 0, 0, zeros(1 + q));
+% NOTE: I changed from x_k_k to P_k_k_1, because, in fact the
+% initialization uses P[1|0].
+% P_k_k_1 = blkdiag(1e-1, (2*pi)^2/12, (50)^2/12, 0, channelCovarianceMatrix); 
+P_k_k_1 = blkdiag(0, 0, 0, 0, zeros(1 + q));
 
-phaseError = 0;
-DopplerError = 10;
+phaseError = 0.5;
+DopplerError = 0;
 x_LQG_k = [1.000e-4, ...
     configuration.dopplerProfile(1) + phaseError, ...
     2*pi*(configuration.dopplerProfile(2) + DopplerError), ...
     2*pi*configuration.dopplerProfile(3)].';
 
-u_LQG = L * x_k_k(WienerStatesSelection);
+u_LQG = L * x_k_k_1(WienerStatesSelection);
 
 %% Simulate Signal
 configuration.addNoise = false;
 [simulatedSignal, ~, LOSPhase, LOSDelay] = gnssReceivedSignal(configuration, simulationSteps + 1);
-samplesTotal = epoch*configuration.samplingFrequency;
-timeSupport = (0:(samplesTotal - 1)).' * (1/configuration.samplingFrequency);
+
 %% Simulation
 plotMeasures = false;
+%NOTE: (Rodrigo): Changed the main loop to match algorithm 1 of my report.
 for k = 1 : simulationSteps
-    %% Forward Step
-    x_k_k_1 = F * x_k_k;  
-    x_k_k_1(WienerStatesSelection) = real(x_k_k_1(WienerStatesSelection));
-    P_k_k_1 = F * ...
-        P_k_k * F' ...
-        + Q;
-
-    errorStateRecord(:, k) = x_k_k(1:4);
-
     %% Signal 
     receivedSignal = simulatedSignal(((k - 1) * samplesTotal + 1: k * samplesTotal));
-
-    %% Carrier Removal
     
-    % Update State 
+    %% LQG Controller
+    % Update LQG state 
     x_LQG_k = F_W * x_LQG_k + B_LQG * u_LQG;
     LQGStateRecord(:, k) = x_LQG_k(1:4);
 
@@ -106,66 +105,71 @@ for k = 1 : simulationSteps
     d_k = exp(1j * phi_T);
     wipedSignal = receivedSignal .* conj(d_k);
     
-    %% Multi-Correlator 
-    delayAPriori = x_LQG_k(1);
-
-    correlatorBank = buildCorrelatorBank(configuration, delayAPriori, q);
-
-    z_k = correlatorBank * wipedSignal / samplesTotal;
-
-    z_hat_k = measurementFunction(x_k_k_1, configuration) / samplesTotal;
+    %% Kalman filter
+    if k > 1
+        % EKF's Update Step
+        correlatorBank = buildCorrelatorBank(configuration, x_LQG_k(1), q);
+        z_k = correlatorBank * wipedSignal / samplesTotal;
+        z_hat_k = measurementFunction(x_k_k_1, configuration) / samplesTotal;
+        
+        if plotMeasures
+            % ---- Plot routine -----
+            plot(abs(z_k));
+            hold on;
+            plot(abs(z_hat_k));
+            hold off;
+            pause(0.1)
+        end
+        
+        % Compute Jacobian
+        % Delay term now follows Φ_pp(ετ + (l - m)Ts) as in the analytical model.
+        delayJacobian = delayJacobianFunctionSimplified( ...
+            x_k_k_1(1), ...
+            x_k_k_1(5:end), ...
+            1 / configuration.samplingFrequency, ...
+            q, ...
+            1 / configuration.chippingFrequency, ...
+            exp(1j * x_k_k_1(2))  ...
+        );
+        phaseJacobian = 1j * z_hat_k;
+        dopplerJacobian = zeros(2*q + 1, 2);
+        channelOrder = numel(x_k_k_1(5:end)) - 1;
+        channelWeightsJacobian = exp(1j * x_k_k_1(2)) .* ...
+            getShiftedCorrelations(x_k_k_1(1), q, configuration, channelOrder) / samplesTotal;
+        jacobian = [delayJacobian ...
+            phaseJacobian ...
+            dopplerJacobian ...
+            channelWeightsJacobian];
+        
+        % Compute Kalman Gain
+        K_k = P_k_k_1 * jacobian'...
+            *((jacobian * P_k_k_1 * jacobian' + R) \ eye(C));
     
-    if plotMeasures
-        % ---- Plot routine -----
-        plot(abs(z_k));
-        hold on;
-        plot(abs(z_hat_k));
-        hold off;
-        pause(0.1)
+        % Obtain the innovation
+        innovation = z_k - z_hat_k;
+        innovationRecord(:, k) = innovation;
+
+        % EKF's state update
+        x_k_k = x_k_k_1 + K_k * innovation;
+        x_k_k(WienerStatesSelection) = real(x_k_k(WienerStatesSelection));
+        
+        % EKF's covariance matrix update
+        P_k_k = (eye(q + 1 + 4) - K_k*jacobian) * P_k_k_1;
+        
+        % LQG control vector computation
+        u_LQG = L * x_k_k(WienerStatesSelection);
+    else
+        % Initialization procedure
+        x_k_k = x_k_k_1;
+        P_k_k = P_k_k_1;
     end
 
-    R = (thermalNoiseVarianceSquared / samplesTotal.^2) * ...
-        (correlatorBank * correlatorBank.');
-    
-    %% Compute Jacobian
-    % Delay term now follows Φ_pp(ετ + (l - m)Ts) as in the analytical model.
-    delayJacobian = delayJacobianFunctionSimplified( ...
-        x_k_k_1(1), ...
-        x_k_k_1(5:end), ...
-        1 / configuration.samplingFrequency, ...
-        q, ...
-        1 / configuration.chippingFrequency, ...
-        sqrt(1) * exp(1j * x_k_k_1(2))  ...
-    );
-    phaseJacobian = 1j * z_hat_k;
-    dopplerJacobian = zeros(2*q + 1, 2);
-    channelOrder = numel(x_k_k_1(5:end)) - 1;
-    channelWeightsJacobian = exp(1j * x_k_k_1(2)) .* ...
-        getShiftedCorrelations(x_k_k_1(1), q, configuration, channelOrder) / samplesTotal;
+    % EKF's Projection Ahead Step
+    x_k_k_1 = F * x_k_k;  
+    x_k_k_1(WienerStatesSelection) = real(x_k_k_1(WienerStatesSelection));
+    P_k_k_1 = F * P_k_k * F' + Q;
 
-    jacobian = [delayJacobian ...
-        phaseJacobian ...
-        dopplerJacobian ...
-        channelWeightsJacobian];
-    
-    %% Kalman Filter Estimation  
-    
-    % HACK: The inversion of the matrix is hard-coded to use an eye(5) (and
-    % eye(7) somewhere else) matrix. We need to make it more general later.
-    K_k = P_k_k_1 * jacobian'...
-        *((jacobian * P_k_k_1 * jacobian' + R) \ eye(C));
-
-    innovation = z_k - z_hat_k;
-    innovationRecord(:, k) = innovation;
-    x_k_k = x_k_k_1 + K_k * innovation;
-    x_k_k(WienerStatesSelection) = real(x_k_k(WienerStatesSelection));
-    % x_k_k(5:end) = [1 0 0].';
-    P_k_k = (eye(q + 1 + 4) - K_k*jacobian) * ...
-        P_k_k_1;
-    
-    %% Control Signal Computation
-    
-    u_LQG = L * x_k_k(WienerStatesSelection);
+    errorStateRecord(:, k) = x_k_k(1:4);
 end
 %% Plots
 
@@ -211,7 +215,7 @@ hold on;
 plot(epochVector, LQGStateRecord(2,:));
 plot(epochVector, LOSPhase(epochVector*4));
 legend({"LQG's estimated phase", "True Phase"});
-ylabel("Doppler estimate");
+ylabel("Phase estimate");
 xlabel("Epochs (Simulation Steps)");
 hold off;
 
@@ -220,7 +224,7 @@ hold on;
 plot(errorStateRecord(2, :));
 plot(epochVector, zeros(1, simulationSteps));
 legend({"EKF's estimated phase error", "Zero line"});
-ylabel("Doppler error estimate");
+ylabel("Phase error estimate");
 xlabel("Epochs (Simulation Steps)");
 hold off;
 
