@@ -17,14 +17,12 @@ function signal = getCodeReplica(configuration, delaySeconds)
     ref  = codeBPSK(idx0);
 
     delaySamples = delaySeconds * Fs;
-    maxDelay = ceil(abs(delaySamples)) + 2;
-    delayHandler = dsp.VariableFractionalDelay( ...
-        "InterpolationMethod","FIR", ...
-        "MaximumDelay", maxDelay);
 
-    signal = zeros(size(ref));
-    reset(delayHandler);
-    for idx = 1:length(ref)
-        signal(idx) = delayHandler(ref(idx), delaySamples);
-    end
+    % Wrap the evaluation grid and use interp1 for the fractional delay.
+    % Append the first sample to preserve periodicity during interpolation.
+    queryPoints = mod((n(1:end-1).' - delaySamples), N);
+    refExtended = [ref(:); ref(1)];
+
+    signal = interp1(0:N, refExtended, queryPoints, "linear");
+    signal = signal(:).';
 end
