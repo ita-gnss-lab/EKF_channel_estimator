@@ -20,7 +20,7 @@ function signal = getCodeReplica(configuration, delaySeconds)
 
     % Wrap the evaluation grid and use interp1 for the fractional delay.
     % Append the first sample to preserve periodicity during interpolation.
-    queryPoints = mod((n(1:end-1).' - delaySamples), N);
+    queryPoints = mod(((0:N-1).' - delaySamples), N);
     refExtended = [ref(:); ref(1)];
 
     signal = interp1(0:N, refExtended, queryPoints, "linear");

@@ -35,7 +35,6 @@ queryPoints = mod(sampleIdx - delayInSamples(:), codeLength);
 sampledCodeExtended = [sampledCode(:); sampledCode(1)];
 delayedCode = interp1([sampleIdx; codeLength], sampledCodeExtended, ...
     queryPoints, "linear");
-delayedCode = delayedCode(:).';
 % Applies the phase
 distorted_code = delayedCode .* exp(1j*LOSPhase);
 
