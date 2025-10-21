@@ -40,10 +40,11 @@ innovationRecord = zeros(C, simulationSteps);
     configuration.carrierFrequency, q);
 
 %% Cost Functions
-beta = 1 / (2 * pi * configuration.carrierFrequency);
+beta = -1 / (2 * pi * configuration.carrierFrequency);
 relation = 0.1;
-T_e =  relation * blkdiag(beta, 1, 1/epoch, 2/epoch^2);
-T_u =  blkdiag(beta, 1, 1/epoch, 2/epoch^2);
+betaWeight = abs(beta);
+T_e =  relation * blkdiag(betaWeight, 1, 1/epoch, 2/epoch^2);
+T_u =  blkdiag(betaWeight, 1, 1/epoch, 2/epoch^2);
 
 %% Coupling Matrix for Control Signal
 B_LQG = eye(4);
