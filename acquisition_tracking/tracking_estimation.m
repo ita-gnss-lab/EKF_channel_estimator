@@ -41,10 +41,9 @@ innovationRecord = zeros(C, simulationSteps);
 
 %% Cost Functions
 beta = -1 / (2 * pi * configuration.carrierFrequency);
-relation = 0.1;
-betaWeight = abs(beta);
-T_e =  relation * blkdiag(betaWeight, 1, 1/epoch, 2/epoch^2);
-T_u =  blkdiag(betaWeight, 1, 1/epoch, 2/epoch^2);
+relation = 0.5;
+T_e =  relation * diag([beta, 1, 1/epoch, 2/epoch^2]);
+T_u =  diag([beta, 1, 1/epoch, 2/epoch^2]);
 
 %% Coupling Matrix for Control Signal
 B_LQG = eye(4);
@@ -64,13 +63,15 @@ x_k_k(5) = 1;
 channelCovarianceMatrix = 0 * eye(1 + q); %0.000001 * eye(1 + q);
 channelCovarianceMatrix(1,1) = 0; % 0.001;  
 
-P_k_k = blkdiag(1e-1, (2*pi)^2/12, 0.0001*(50)^2/12, 0, channelCovarianceMatrix); 
+P_k_k = blkdiag(1e-1, (2*pi)^2/12, (50)^2/12, 0, channelCovarianceMatrix); 
 % P_k_k = blkdiag(0, 0, 0, 0, zeros(1 + q));
 
-phaseError = 1;
-x_LQG_k = [1.001e-4, ...
+phaseError = 0;
+DopplerError = 10;
+x_LQG_k = [1.000e-4, ...
     configuration.dopplerProfile(1) + phaseError, ...
-    2*pi*configuration.dopplerProfile(2:end)].';
+    2*pi*(configuration.dopplerProfile(2) + DopplerError), ...
+    2*pi*configuration.dopplerProfile(3)].';
 
 u_LQG = L * x_k_k(WienerStatesSelection);
 
@@ -98,57 +99,21 @@ for k = 1 : simulationSteps
     
     % Update State 
     x_LQG_k = F_W * x_LQG_k + B_LQG * u_LQG;
-
     LQGStateRecord(:, k) = x_LQG_k(1:4);
-    
+
     % Carrier Wipe-Off
     phi_T = x_LQG_k(2) + x_LQG_k(3) * timeSupport + 0.5 * x_LQG_k(4) * timeSupport.^2;
-    % [totalPhaseAPriori, actualUsedDelay, ~] = get_LOS_dynamics(...
-    %     time, ...
-    %     x_LQG_k(2:4).', ...  % configuration.dopplerProfile
-    %     configuration.carrierFrequency);
-    
     d_k = exp(1j * phi_T);
-    
     wipedSignal = receivedSignal .* conj(d_k);
     
     %% Multi-Correlator 
+    delayAPriori = x_LQG_k(1);
 
-    % HACK(Rodrigo): I used the (known and fixed) value of 1e-4 to debug
-    % buildCorrelatorBank.
-    delayAPriori = x_LQG_k(1); %1e-4 
-
-    % NOTE(Rodrigo): This buildCorrelatorBank is a new function that i 
-    % created to build the correlator bank. In my understanding, we were
-    % building the correlator bank in an incorrect manner previously, since
-    % the samples delay were being computed individually for each code
-    % replica. I think it is better to compute a single delay in samples
-    % and then use it to build the correlator bank by shifting a code
-    % replica using integer values of samples delay.
     correlatorBank = buildCorrelatorBank(configuration, delayAPriori, q);
 
-    % delaysVector = delayAPriori + ...
-    %     1 / (configuration.chippingFrequency * q) * ...
-    %     (-q : 1 : q);
-    % correlatorBank = zeros(length(delaysVector), ...
-    %     samplesTotal);
-    % for i = 1:length(delaysVector)
-    %     correlatorBank(i,:) = reference_signal(configuration, ...
-    %                 delaysVector(i))';
-    % end
-    
-    % NOTE(Rodrigo): Put now a debug in measurementEstimate and plot
-    % z_k. You can now see a perfect triangle, as we would expect.
     z_k = correlatorBank * wipedSignal / samplesTotal;
 
-    % HACK(Rodrigo): I'm aritfically inputing the perfect version of, 
-    % StateAPriori, so we can further modify the measurementFunction
-    % function so that the shape of the correlation matches what we are
-    % getting from the buildCorrelatorBank function.
-    % z_hat_k = measurementFunction([zeros(4,1);1;zeros(q, 1)], ...
-    %     configuration) / samplesTotal;
-    z_hat_k = measurementFunction(x_k_k_1, ...
-        configuration) / samplesTotal;
+    z_hat_k = measurementFunction(x_k_k_1, configuration) / samplesTotal;
     
     if plotMeasures
         % ---- Plot routine -----
