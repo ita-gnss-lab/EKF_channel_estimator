@@ -11,6 +11,7 @@ q = 7;
 C = 2*q + 1;
 middleSample = q + 1;
 epoch = configuration.totalChips / configuration.chippingFrequency;
+configuration.correlatorHalfSpan = q;
 
 % NOTE: These were not being used
 WienerStatesSelection = 1:4;
@@ -100,7 +101,7 @@ for k = 1 : simulationSteps
     LQGStateRecord(:, k) = x_LQG_k(1:4);
     
     % Carrier Wipe-Off
-    phi_T = x_LQG_k(2) + (x_LQG_k(3) * timeSupport + x_LQG_k(4) * timeSupport.^2);
+    phi_T = x_LQG_k(2) + x_LQG_k(3) * timeSupport + 0.5 * x_LQG_k(4) * timeSupport.^2;
     % [totalPhaseAPriori, actualUsedDelay, ~] = get_LOS_dynamics(...
     %     time, ...
     %     x_LQG_k(2:4).', ...  % configuration.dopplerProfile
@@ -161,13 +162,8 @@ for k = 1 : simulationSteps
         (correlatorBank * correlatorBank.');
     
     %% Compute Jacobian
-    % HACK: I needed to put a - sign here to make the system work. I
-    % removed the - sign from the update state 
-    % (x_LQG_k = F_W * x_LQG_k - B_LQG * u_LQG ->
-    % x_LQG_k = F_W * x_LQG_k + B_LQG * u_LQG)
-    % TODO: Look later into delayJacobianFunctionSimplified to see where
-    % i'm putting the - sign incorrectly.
-    delayJacobian = -delayJacobianFunctionSimplified( ...
+    % Delay term now follows Φ_pp(ετ + (l - m)Ts) as in the analytical model.
+    delayJacobian = delayJacobianFunctionSimplified( ...
         x_k_k_1(1), ...
         x_k_k_1(5:end), ...
         1 / configuration.samplingFrequency, ...
@@ -177,8 +173,9 @@ for k = 1 : simulationSteps
     );
     phaseJacobian = 1j * z_hat_k;
     dopplerJacobian = zeros(2*q + 1, 2);
+    channelOrder = numel(x_k_k_1(5:end)) - 1;
     channelWeightsJacobian = exp(1j * x_k_k_1(2)) .* ...
-        getShiftedCorrelations(x_k_k_1(1), q, configuration) / samplesTotal;
+        getShiftedCorrelations(x_k_k_1(1), q, configuration, channelOrder) / samplesTotal;
 
     jacobian = [delayJacobian ...
         phaseJacobian ...

@@ -5,11 +5,10 @@ beta = 1 / (2 * pi * carrierFrequency);
 T = epoch;
 
 carrierStateTransitionMatrix = [
-1 0 beta*T beta*T^2;
-0 1 T      T^2;
+1 0 beta*T 0.5*beta*T^2;
+0 1 T      0.5*T^2;
 0 0 1      T;
 0 0 0      1
 ];
 channelStateTransitionMatrix = eye(numberOfTaps + 1);
 end
-

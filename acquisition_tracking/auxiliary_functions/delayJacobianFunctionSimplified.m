@@ -4,7 +4,7 @@ function [hTau, dphiLm, deltaLm] = delayJacobianFunctionSimplified( ...
 % Computes the delay Jacobian vector hTau (size (2q+1)x1) whose m-th entry is
 %   hTau(m) = scale * sum_{l=0}^L hHatL(l+1) * dPhi_pp(deltaLm(l+1,m))
 % with
-%   deltaLm(l+1,m) = epsTauHat + (l + m) * Ts,
+%   deltaLm(l+1,m) = epsTauHat + (l - m) * Ts,
 %   dPhi_pp(Δ) = -(1/Tc)*sign(Δ),  for 0 < |Δ| < Tc; and 0 elsewhere.
 %
 % Inputs
@@ -33,8 +33,8 @@ function [hTau, dphiLm, deltaLm] = delayJacobianFunctionSimplified( ...
     l = (0:L).';       % (L+1)x1
     m = (-q:q);        % 1x(2q+1)
 
-    % Δ_{l,m} = ε̂_τ + (l + m)Ts
-    deltaLm = epsTauHat + (l + m) * Ts;
+    % Δ_{l,m} = ε̂_τ + (l - m)Ts
+    deltaLm = epsTauHat + (l - m) * Ts;
 
     % dΦ_pp(Δ): derivative of triangular autocorrelation
     dphiLm = zeros(size(deltaLm), 'like', deltaLm);
