@@ -1,0 +1,1488 @@
+1
+
+State-Space Signal Model
+A linear discrete-time state-variable system can be given as
+θ[k] = A[k − 1]θ[k − 1] + ω[k]
+
+(1)
+
+y[k] = S[k]θ[k] + ψ[k]
+
+(2)
+
+where θ[k] ∈ RP×1 is the parameter estimate at time instant k, y[k] ∈ RO×1 is the observation data at
+time instant k, A[k] ∈ RP×P is the state-space model, S[k] ∈ RO×P is the observation (measurement)
+model, ω[k] ∈ RP×1 is the state noise process, and ψ[k] ∈ RO×1 is the observation noise process.
+Let us introduce the following assumptions:
+1. The state noise process ω[k] is zero mean with covariance
+
+
+E ω[k]ω T [ℓ] = Q[k] δk,ℓ .
+
+(3)
+
+2. The observation noise process ψ[k] is zero mean with covariance
+
+
+E ψ[k]ψ T [ℓ] = R[k] δk,ℓ .
+
+(4)
+
+3. The state and observation process noise have correlation
+
+
+E ω[k]ψ T [ℓ] = M[k] δk,ℓ .
+
+(5)
+
+4. There is some initial condition or a priori density, on the random variable θ[0] with mean
+
+
+µθ = E[θ[0]] and covariance E θ[0]θ T [0] = Π.
+Thus, a Klaman filter to provide parameter estimates θ̂[k|k] considering all observations y[k] up to
+the time instant k can be defined with the following steps:
+1. State estimate extrapolation (propagation):
+θ̂[k|k − 1] = A[k − 1]θ̂[k − 1|k − 1]
+
+(6)
+
+2. Error covariance extrapolation (propagation):
+P[k|k − 1] = A[k − 1]P[k − 1|k − 1]AT [k − 1] + Q[k − 1]
+1
+
+(7)
+
+3. Kalman gain:
+K[k] = P[k|k − 1]ST [k](S[k]P[k|k − 1]ST [k] + R[k])−1
+
+(8)
+
+4. State estimate update:
+
+θ̂[k|k] = θ̂[k|k − 1] + K[k] y[k] − S[k]θ̂[k|k − 1]
+
+(9)
+
+5. Error covariance update:
+P[k|k] = (I − K[k]S[k])P[k|k − 1]
+
+2
+
+(10)
+
+2
+
+State-Space Model
+
+We assume that the delay and phase variations of the signal are due to the relative movement
+between the transmitter and the receiver, to synchronization mismatches, and to the propagation
+along the communication channel.
+We approximate the channel by a sequence of time-variantly weighted taps equidistantly
+spaced in time.
+L
+
+h(t, τ) ≈
+
+∑ h(l)(t)δ (τ − lTs)
+
+(11)
+
+l=0
+
+1
+where τ is the experienced delay, h(l) is the weight of the l − th tap, Ts =
+and L is large
+2B
+enough to satisfy:
+• LTs = Tc ;
+• Ts ≪ Tc
+Thus, the state vector for the sampled signal is
+
+
+
+
+
+
+
+
+θ[k] = 
+
+
+
+
+
+
+
+
+τ[k]
+φν [k]
+2πν[k]
+2πaν [k]
+h(0) [k]
+h(1) [k]
+..
+.
+h(L) [k]
+
+
+
+
+
+
+
+
+
+ ∈ R(L+5)×1 ,
+
+
+
+
+
+
+
+
+(12)
+
+where
+
+Td2
+φν [k] = φν [k − 1] + 2πTd ν[k − 1] + 2π aν [k − 1]
+2
+is the phase variation due to the movement between the transmitter and the receiver,
+τ[k] = τ[k − 1] + 2πTd β ν[k − 1] + 2π
+
+Td2
+β aν [k − 1]
+2
+
+is the delay variation, whereas aν [k] is the angular Doppler drift, β =
+frequency of the signal and
+3
+
+1
+2π fc ,
+
+(13)
+
+(14)
+and fc is the carrier
+
+h(l) [k] = α (l) h(l) [k − 1]
+
+(15)
+
+is the random walk dynamic model for the channel coefficients.
+Including also noise, modeling random behavior, the state-space model can be given as
+θ[k] = A θ[k − 1] + ω[k]
+with
+
+
+
+
+
+
+
+
+
+
+A=
+
+
+
+
+
+
+
+
+Td2
+2
+Td2
+2
+
+1 0 β Td β
+0
+0
+0
+0
+0
+..
+.
+
+1
+0
+0
+0
+0
+..
+.
+
+Td
+1
+0
+0
+0
+..
+.
+
+Td
+1
+0
+0
+..
+.
+
+0 0
+
+0
+
+0
+
+0
+
+0
+
+...
+
+0
+
+0
+0
+...
+0
+0
+0
+...
+0
+0
+0
+...
+0
+α (0) 0
+...
+0
+(1)
+0 α
+...
+0
+..
+..
+..
+...
+.
+.
+.
+0
+0
+... α (L)
+
+(16)
+
+
+
+
+
+
+
+
+
+
+ ∈ R(L+5)×(L+5) .
+
+
+
+
+
+
+
+
+(17)
+
+The state noise process is zero mean
+E [ω[k]] = 0
+
+(18)
+
+
+
+E ω[k]ω T [ℓ] = blkdiag{Q1 , Q2 }
+
+(19)
+
+and has the covariance matrix
+
+where
+
+
+β2
+
+Td
+
+
+2  Td β
+Q1 = σclk
+1
+ 0
+0
+
+Td β
+Td
+0
+0
+
+
+
+
+
+2
+2
++ (σaν + σclk3 ) 
+
+
+
+Td5 2
+20 β
+Td5
+20 β
+Td4
+8 β
+Td3
+6 β
+
+0
+0
+0
+0
+
+0
+0
+0
+0
+
+
+
+
+
+
+
+
+
++σ2 
+clk2 
+
+
+
+
+
+Td5
+20 β
+Td5
+20
+Td4
+8
+Td3
+6
+
+Td4
+8 β
+Td4
+8
+Td3
+3
+Td2
+2
+
+Td3 2
+3 β
+Td3
+3 β
+Td2
+2 β
+
+Td3
+3 β
+Td3
+3
+Td2
+2
+
+0
+
+
+0
+
+Td4
+6 β
+Td3
+6
+Td2
+2
+
+Td
+
+Td2
+2 β
+Td2
+2
+
+Td
+0
+
+
+
+
+
+
+
+2 
+ + σiono 
+
+
+
+
+Td
+0
+0
+0
+
+0
+
+
+
+
+
+0 
+
+0 
+
+0
+0
+0
+0
+0
+
+0
+0
+0
+0
+
+0
+0
+0
+0
+
+
+
+
+
+
+
+
+(20)
+
+2 , σ 2 , and σ 2 are modeling
+where σa2ν is the variance of the angular Doppler error drift rate, σclk
+clk2
+clk3
+1
+
+4
+
+2
+the drift behavior of the receiver clock, and σiono
+models the code-carrier divergence due to
+the ionospheric effect. The time-delay and Doppler estimate of the sate estimate extrapolation
+(propagation) is used for Doppler correction, as
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+3
+
+τ̂[k|k − 1]
+φˆν [k|k − 1]
+ν̂[k|k − 1]
+aˆν [k|k − 1]
+ĥ(0) [k|k − 1]
+ĥ(1) [k|k − 1]
+..
+.
+ĥ(L) [k|k − 1]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ = A
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+τ̂[k − 1|k − 1]
+φˆν [k − 1|k − 1]
+ν̂[k − 1|k − 1]
+aˆν [k − 1|k − 1]
+ĥ(0) [k − 1|k − 1]
+ĥ(1) [k − 1|k − 1]
+..
+.
+ĥ(L) [k − 1|k − 1]
+
+
+
+
+
+
+
+
+
+.
+
+
+
+
+
+
+
+
+(21)
+
+Measurement Model
+Let the spreading sequence of one received satellite be
+c(τ) = [c(τ), . . . , . . . , c(nTs − τ), . . . , c((N − 1)Ts − τ)]T
+
+(22)
+
+and the phase evolution caused by the Doppler be
+
+h
+iT
+d[k, ν[k], φν [k]] = e jφν [k] , . . . , e j(φν [k]+2πnTs ν[k]) , . . . , e j(φν [k]+2π(N−1)Ts ν[k])
+
+(23)
+
+which will be simplified as
+h
+iT
+jφν [k]
+j(φν [k]+2πnTs ν[k])
+j(φν [k]+2π(N−1)Ts ν[k])
+d[k] = e
+,...,e
+,...,e
+
+(24)
+
+and
+
+h
+iT
+jφˆν [k|k−1]
+j(φˆν [k|k−1]+2πnTs ν̂[k|k−1])
+j(φˆν [k|k−1]+2π(N−1)Ts ν̂[k|k−1])
+d̂[k] = e
+,...,e
+,...,e
+
+(25)
+
+To estimate the time-delay, we employ a bank of symmetrical and equidistant correlators,
+applying Doppler and Doppler phase correction to all of them, around the prompt correlator,
+
+5
+
+assumed to be sufficiently synchronized with the LOS signal, as follows
+
+B(τ̂[k|k − 1], ν̂[k|k − 1], φ̂ν [k|k − 1]]) ≜
+h
+i
+c(τ̂[k|k − 1] − L · ∆) ⊙ d̂[k] . . . c(τ̂[k|k − 1] + 0) ⊙ d̂[k] . . . c(τ̂[k|k − 1] + L · ∆) ⊙ d̂[k] ∈ RN×(2L+1)
+(26)
+where the spacing used is ∆ = TLc and the delay estimate is within one chip around the signal delay,
+that is |τ̂[k|k − 1] − τ[k]| ≤ Tc /2.
+Therefore, the correlators are
+
+T
+1 H
+x [k]B(τ̂[k|k − 1], ν̂[k|k − 1], φ̂ν [k|k − 1]])
+N
+
+(27)
+
+p
+P[k]g[k]e jφ [k] (H[k]c(τ[k])) ⊙ (d[k, ν[k], φν [k]]) + n[k],
+
+(28)
+
+n[k] = [n(kN Ts ), . . . , n((kN + n) Ts ), . . . , n((kN + N − 1) Ts )]T .
+
+(29)
+
+y[k] =
+with the received signal
+x[k] =
+where the noise is
+
+1
+Furthermore, Ts = 2B
+is the sampling duration, g[k] ∈ {−1, 1} is the navigation message
+modulated onto the spreading sequence, φ [k] is the phase due to signal propagation, and P[k] is the
+received power of the satellite signal.
+The measurement sensibility matrix is the linearization of the measurement function around
+the a priori state vector estimate
+
+6
+
+S[k] =
+
+∂ y[k]
+∂ θ[k]
+
+
+
+
+
+
+
+
+
+
+=
+
+
+
+
+
+
+
+
+
+θ[k]=θ − [k]
+
+∂ y[k]
+∂ τ[k]
+∂ y[k]
+∂ φν [k]
+∂ y[k]
+∂ ν[k]
+∂ y[k]
+∂ aν [k]
+∂ y[k]
+∂ h(0) [k]
+∂ y[k]
+∂ h(1) [k]
+
+..
+.
+
+∂ y[k]
+∂ h(L) [k]
+
+
+
+
+
+
+
+
+
+
+|θ[k]=θ[k]
+
+
+
+
+
+
+
+
+
+(30)
+
+Let
+
+p
+
+P[k]
+g[k]e − jφ [k] = γ and B(τ̂[k|k − 1], ν̂[k|k − 1], φ̂ν [k|k − 1]]) = B[k|k − 1]
+N
+
+(31)
+
+so for the expansion of the correlator formula with the signal model, we have
+
+y[k] =γ
+
+
+
+1
+cH (τ[k])HH [k] ⊙ dH [k] B[k|k − 1] + nH [k]B[k|k − 1]
+N
+
+(32)
+
+Since H[k] is the sum of circulant matrices weighted by channel coefficients, the result of
+its multiplication with the code sequence is a vector circularly shifted in time. Therefore,
+
+
+
+
+
+H
+H
+∗(l)
+c (τ[k])H [k] = ∑ h [k] 
+
+l=0
+
+
+L
+
+c(τ[k] + lTs )
+..
+.
+c(nTs − τ[k] + lTs )
+..
+.
+
+T
+
+
+
+
+
+
+
+
+
+c((N − 1)Ts − τ[k] + lTs )
+Developing the Hamadard product with the Doppler correction, we have
+
+7
+
+(33)
+
+
+
+
+
+L
+
+∗(l)
+h
+[k]
+
+∑
+
+l=0
+
+
+
+T
+
+c(τ[k] + lTs )e − jφν [k]
+..
+.
+c(nTs − τ[k] + lTs )e − j(φν [k]+2πnTs ν[k])
+..
+.
+c((N − 1)Ts − τ[k] + lTs )e − j(φν [k]+2π(N−1)Ts ν[k])
+
+
+
+
+
+
+
+
+
+
+(34)
+
+The result of the matrix multiplication with the correlator bank, for each line, is the vector
+multiplication
+
+
+
+
+
+L
+
+∗(l)
+h
+[k]
+
+∑
+
+l=0
+
+
+
+c(nTs − τ[k] + lTs )e − j(φν [k]+2πnTs ν[k])
+..
+.
+c((N − 1)Ts − τ[k] + lTs )e − j(φν [k]+2π(N−1)Ts ν[k])
+
+
+
+
+
+
+
+
+
+
+
+T
+
+c(τ[k] + lTs )e − jφν [k]
+..
+.
+
+
+
+
+
+ ·
+
+
+
+
+(35)
+
+
+
+c(τ̂[k|k − 1] + q∆)e jφ̂ν [k]
+..
+.
+c(nTs − τ̂[k|k − 1] + q∆)e j(φ̂ν [k]+2πnTs ν̂[k])
+..
+.
+c((N − 1)Ts − τ̂[k|k − 1] + q∆)e j(φ̂ν [k]+2π(N−1)Ts ν̂[k])
+
+
+
+
+
+
+
+
+
+
+(36)
+
+For simplification, let
+εφkν = φν [k] − φ̂ν [k|k − 1] and ενk = ν[k] − ν̂[k|k − 1]
+
+(37)
+
+Therefore, we may write
+L
+
+∑ h∗(l)[k]
+l=0
+
+N−1
+
+k
+
+k
+
+∑ c(nTs − τ[k] + lTs)c(nTs − τ̂[k|k − 1] + q∆)e − jεφν +2πnTsεν
+
+(38)
+
+n=0
+
+for each element of the resulting vector.
+In Iliapoulis, there is the following consideration
+
+N−1
+
+∑ c(nTs − τ[k] + lTs)c(nTs − τ̂[k|k − 1] + q∆) =
+
+n=0
+
+Z
+T
+
+8
+
+s(t − τ[k] + lTS )s(t − τ̂[k|k − 1] + q∆)dt (39)
+
+We will also consider this approximation of the sum to an integral. Thus,
+
+N−1
+
+k
+
+∑ c(nTs − τ[k] + lTs)c(nTs − τ̂[k|k − 1] + q∆)e − j2πnTsεν = χ(ετk + lTs − q∆, ενk )
+
+(40)
+
+ετk = τ[k] − τ̂[k|k − 1]
+
+(41)
+
+n=0
+
+where χ(ετk + lTs − q∆, ενk ) is the ambiguity function defined as
+χ(ετk + lTs − q∆, ενk ) =
+
+Z
+
+k
+
+s(t − τ[k] + lTS )s(t − τ̂[k|k − 1] + q∆)e − j2πtεν
+
+(42)
+
+T
+
+T
+χ(ετk + lTs − L∆, ενk )
+
+
+..
+
+
+.
+
+
+L
+
+
+− jεφkν
+∗(l)
+k
+k
+y[k] = γe
+∑ h [k]  χ(ετ + lTs − q∆, εν ) 
+l=0
+..
+
+
+.
+
+
+k
+k
+χ(ετ + lTs + L∆, εν )
+
+
+3.1
+
+(43)
+
+Delay derivative
+The elements dependent on the delay are the integral contained in the vector. Therefore,
+
+
+
+
+L
+
+∂ y[k]
+− jεφkν
+∗(l)
+= γe
+h [k] 
+∑
+
+∂ τ[k]
+
+l=0
+
+
+
+3.2
+
+∂
+k
+k
+∂ τ[k] χ(ετ + lTs − L∆, εν )
+
+..
+.
+∂
+k
+k
+∂ τ[k] χ(ετ + lTs − q∆, εν )
+..
+.
+
+∂
+k
+k
+∂ τ[k] χ(ετ + lTs + L∆, εν )
+
+T
+
+
+
+
+
+
+
+
+
+
+Doppler phase derivative
+The Doppler phase is only within the exponential term, so the derivative is
+
+9
+
+(44)
+
+T
+χ(ετk + lTs − L∆, ενk )
+
+
+..
+
+
+.
+
+
+L
+k
+∂ y[k]
+
+
+= − jγe − jεφν ∑ h∗(l) [k]  χ(ετk + lTs − q∆, ενk ) 
+
+
+∂ φν
+l=0
+..
+
+
+.
+
+
+k
+k
+χ(ετ + lTs + L∆, εν )
+
+
+3.3
+
+Doppler shift derivative
+
+
+
+
+L
+
+∂ y[k]
+− jεφkν
+∗(l)
+
+= γe
+h
+[k]
+∑
+
+∂ ν[k]
+
+l=0
+
+
+
+3.4
+
+(45)
+
+∂
+k
+k
+∂ ν[k] χ(ετ + lTs − L∆, εν )
+
+..
+.
+∂
+k
+k
+∂ ν[k] χ(ετ + lTs − q∆, εν )
+..
+.
+
+∂
+k
+k
+∂ ν[k] χ(ετ + lTs + L∆, εν )
+
+T
+
+
+
+
+
+
+
+
+
+
+(46)
+
+Angular Doppler drift derivative
+None of the terms are dependent on the Angular Doppler drift, so the derivative is 0.
+
+3.5
+
+Channel coefficients derivative
+
+Since there is a sum of vectors weighted by the channel coefficients, the derivative in respect
+to a given wheight is the corresponding vector, as in
+T
+χ(ετk + lTs − L∆, ενk )
+
+
+..
+
+
+.
+
+
+k
+∂ y[k]
+
+− jεφν
+k + lT − q∆, ε k ) 
+=
+γe
+χ(ε
+
+s
+τ
+ν 
+
+
+∂ h∗(l) [k]
+.
+
+
+.
+.
+
+
+k
+k
+χ(ετ + lTs + L∆, εν )
+
+
+10
+
+(47)
+
+4
+
+Development for numeric method calculations
+
+The spread sequence signal can be written as the reverse fourier integral of its counterpart
+in frequency. This can be written as follows:
+Z∞
+
+s(t) =
+
+√
+Tc sinc( f Tc )e j2π f t d f
+
+(48)
+
+−∞
+
+However, given the properties of the fourier transform, the following equations are also
+valid:
+
+s(t)e
+
+− j2πνt
+
+Z∞
+
+=
+
+√
+Tc sinc(( f1 + ν)Tc )e j2π f1t d f1
+
+(49)
+
+√
+Tc sinc( f2 Tc )e j2π f2 (t+τ) d f2
+
+(50)
+
+−∞
+
+Z∞
+
+s(t + τ) =
+−∞
+
+Thus, the ambiguity function can be rewritten as a triple integral:
+
+χ(ετk + lTs − q∆, ενk ) =
+
+Z
+
+k
+
+s(t − τ[k] + lTS )s(t − τ̂[k|k − 1] + q∆)e − j2πtεν
+
+T
+
+Z∞ Z∞ Z∞
+
+=
+−∞ −∞ −∞
+Z∞ Z∞ Z∞
+
+=
+
+√
+√
+k
+Tc sinc(( f1 + ενk )Tc )e j2π f1t Tc sinc( f2 Tc )e j2π f2 (t+ετ +lTs −q∆) dtd f1 d f2
+k
+
+Tc sinc(( f1 + ενk )Tc )sinc( f2 Tc )e j2π( f1 + f2 )t e j2π f2 (ετ +lTs −q∆) dtd f1 d f2
+
+−∞ −∞ −∞
+Z∞ Z∞
+
+k
+
+Tc sinc(( f1 + ενk )Tc )sinc( f2 Tc )δ ( f1 + f2 )e j2π f2 (ετ +lTs −q∆) d f1 d f2
+
+=
+−∞ −∞
+
+Where δ (x) represents Dirac’s Delta Function. We can, without loss of generality, integrate
+first in the variable f1 :
+
+11
+
+Z∞ Z∞
+
+=
+
+k
+
+Tc sinc(( f1 + ενk )Tc )sinc( f2 Tc )δ ( f1 + f2 )e j2π f2 (ετ +lTs −q∆) d f1 d f2
+
+−∞ −∞
+Z∞
+
+k
+
+Tc sinc((− f2 + ενk )Tc )sinc( f2 Tc )e j2π f2 (ετ +lTs −q∆) d f2
+
+=
+−∞
+
+Let B represent the signal’s bandwith, then, with the new integration limits, the ambiguity
+integral becomes:
+
+χ(ετk + lTs − q∆, ενk ) =
+
+B/2
+Z
+
+k
+
+Tc sinc((− f2 + ενk )Tc )sinc( f2 Tc )e j2π f2 (ετ +lTs −q∆) d f2
+
+(51)
+
+−B/2
+
+This integral can be implemented for computation by numeric means.
+
+4.1
+
+Delay derivative
+The following is true for the delay error derivative:
+∂
+∂
+ετk =
+(τ[k] − τ̂[k|k − 1]) = 1
+∂ τ[k]
+∂ τ[k]
+
+(52)
+
+Given 51, the delay derivative can be foun evaluating the integral:
+
+∂
+∂
+χ(ετk + lTs − L∆, ενk ) =
+∂ τ[k]
+∂ τ[k]
+B/2
+Z
+
+=
+
+B/2
+Z
+
+k
+
+Tc sinc((− f2 + ενk )Tc )sinc( f2 Tc )e j2π f2 (ετ +lTs −q∆) d f2
+
+−B/2
+
+Tc sinc((− f2 + ενk )Tc )sinc( f2 Tc )
+
+−B/2
+B/2
+Z
+
+= j2π
+
+
+k
+∂
+e j2π f2 (ετ +lTs −q∆) d f2
+∂ τ[k]
+k
+
+Tc sinc((− f2 + ενk )Tc )sinc( f2 Tc ) f2 e j2π f2 (ετ +lTs −q∆) d f2
+
+−B/2
+
+12
+
+4.2
+
+Doppler shift derivative
+Similarly, for the Doppler shift error derivative:
+∂
+∂
+ενk =
+(ν[k] − ν̂[k|k − 1]) = 1
+∂ ν[k]
+∂ ν[k]
+
+∂
+∂
+χ(ετk + lTs − L∆, ενk ) =
+∂ ν[k]
+∂ ν[k]
+
+B/2
+Z
+
+Tc
+−B/2
+B/2
+Z
+
+=
+
+k
+
+Tc sinc((− f2 + ενk )Tc )sinc( f2 Tc )e j2π f2 (ετ +lTs −q∆) d f2
+
+−B/2
+
+B/2
+Z
+
+=
+
+(53)
+
+
+k
+∂
+sinc((− f2 + ενk )Tc ) sinc( f2 Tc )e j2π f2 (ετ +lTs −q∆) d f2
+∂ ν[k]
+
+
+
+k
+Tc sinc′ ((− f2 + ενk )Tc ) · Tc sinc( f2 Tc ) f2 e j2π f2 (ετ +lTs −q∆) d f2
+
+−B/2
+B/2
+Z
+
+=
+
+k
+
+Tc2 sinc′ ((− f2 + ενk )Tc )sinc( f2 Tc ) f2 e j2π f2 (ετ +lTs −q∆) d f2
+
+−B/2
+
+Note from eq. (29) of "Iliopoulos, A., Enneking, C., Crespillo, O. G., Jost, T., Thoelert, S., &
+Antreich, F. (2017). Multicorrelator signal tracking and signal quality monitoring for GNSS with
+extended Kalman filter. 2017 IEEE Aerospace Conference, 1–10. https://doi.org/10.1109/
+AERO.2017.7943579" that it is necessary to calculate a predicted measurement \mathbf{z}^-[k]
+(which can also be written as \mathbf{z}[k \ mid k - 1]) in order to use the EKF algorithm. In other
+words, you need to 'recreate' the measurements vector y[k] from your formulation (which could
+be represented as \mathbf{z}[k] as i've mentioned earlier) using the states vector \hat{x}[k \mid k
+- 1].
+Observe that in your theoretical framework you propose to correct the Doppler effect and the
+time-delay together with the multicorrelator bank. Therefore, i think that it would be
+necessary to apply a LQG controller to estimate the errors \varepsilon^{k}_{\tau} and
+\varepsilon^{k}_{\nu} in order to apply them on the measurements prediction, as it is proposed in
+Section 3 of "Fohlmeister, F. (2021). GNSS Carrier Phase Tracking under Ionospheric
+Scintillations [Thesis, Technische Universität München]. In Shaker Verlag. https://
+elib.dlr.de/185344/".
+In my opinion, there is no gain in tracking the error state instead of the state itself. Therefore, i
+understand that we have two options at hand:
+- To do not correct neither the Doppler effect nor the time-delay with the correlator bank. In this
+case, we would simply apply the correlator bank on the received signal \mathbf{y}[k] directly
+(without any correction). Then, on the EKF state space model, we would need to adjust the
+Jacobian matrix accordingly and we would need to apply both the Doppler effect and the timedelay corrections on the measurements prediction \mathbf{z}[k \mid k - 1].
+- To do not track neither the Doppler effect nor13
+the time-delay inside the EKF algorithm. This
+other option would have two Kalman filters working together: One fully dedicated for the channel
+impulse response modeling and the other one dedicated for the carrier-phase and time-delay
+correction. The main disadvantege of this approach is that the time-delay and the carrier-phase
+would not be preserved from the channel effects. However, it would be still possible to use the
+estimated channel coefficients in post-processing to correct channel effects.
+I'll write a full report on both approaches that i'm proposing, so we can further discuss them.
+
+

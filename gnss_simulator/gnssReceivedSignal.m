@@ -24,12 +24,18 @@ sampledCode = rangingCode(currentChip);
 %% LOS PHASE AND DELAY
 % Computes LOS transmission phase and delay
 [LOSPhase, LOSDelay] = get_LOS_dynamics(time, configuration.dopplerProfile, configuration.carrierFrequency);
-% Applies the delay
-% delay_in_samples = LOS_delay * configuration.samplingFrequency;
-% delay_handler = dsp.VariableFractionalDelay("InterpolationMethod","Linear", 'MaximumDelay',9999);
-% delayed_code = delay_handler(sampled_code, delay_in_samples);
-delayInSamples = round(LOSDelay * configuration.samplingFrequency);
-delayedCode = circshift(sampledCode, delayInSamples);
+
+delayInSamples = LOSDelay * configuration.samplingFrequency;
+maxDelay = ceil(max(delayInSamples)) + 2;
+delayHandler = dsp.VariableFractionalDelay( ...
+    "InterpolationMethod","FIR", ...
+    "MaximumDelay", maxDelay);
+
+delayedCode = zeros(size(sampledCode));
+reset(delayHandler);
+for idx = 1:length(sampledCode)
+    delayedCode(idx) = delayHandler(sampledCode(idx), delayInSamples(idx));
+end
 % Applies the phase
 distorted_code = delayedCode .* exp(1j*LOSPhase);
 
@@ -42,4 +48,3 @@ else
 end
 
 end
-
