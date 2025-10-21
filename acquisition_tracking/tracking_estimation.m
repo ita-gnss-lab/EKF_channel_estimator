@@ -147,8 +147,9 @@ for k = 1 : simulationSteps
     % getting from the buildCorrelatorBank function.
     % z_hat_k = measurementFunction([zeros(4,1);1;zeros(q, 1)], ...
     %     configuration) / samplesTotal;
-    z_hat_k = measurementFunction(x_k_k_1, ...
-        configuration) / samplesTotal;
+    [z_hat_raw, measurementAux] = measurementFunction(x_k_k_1, ...
+        configuration);
+    z_hat_k = z_hat_raw / samplesTotal;
     
     if plotMeasures
         % ---- Plot routine -----
@@ -173,10 +174,21 @@ for k = 1 : simulationSteps
         sqrt(1) * exp(1j * x_k_k_1(2))  ...
     );
     phaseJacobian = 1j * z_hat_k;
-    dopplerJacobian = zeros(2*q + 1, 2);
-    channelOrder = numel(x_k_k_1(5:end)) - 1;
-    channelWeightsJacobian = exp(1j * x_k_k_1(2)) .* ...
-        getShiftedCorrelations(x_k_k_1(1), q, configuration, channelOrder) / samplesTotal;
+
+    shiftedCorrelations = measurementAux.shiftedCorrelations;
+    tapTimesRow = measurementAux.tapTimes.';
+    effectiveWeightsRow = measurementAux.effectiveWeights.';
+    phaseFactor = exp(1j * measurementAux.totalPhaseError);
+
+    dNuRow = 1j * tapTimesRow .* effectiveWeightsRow;
+    dNuDotRow = 1j * 0.5 * (tapTimesRow.^2) .* effectiveWeightsRow;
+
+    dopplerJacobian = phaseFactor * [ ...
+        sum(shiftedCorrelations .* dNuRow, 2), ...
+        sum(shiftedCorrelations .* dNuDotRow, 2)] / samplesTotal;
+
+    channelWeightsJacobian = phaseFactor * ...
+        (shiftedCorrelations .* measurementAux.dopplerPhase.') / samplesTotal;
 
     jacobian = [delayJacobian ...
         phaseJacobian ...
