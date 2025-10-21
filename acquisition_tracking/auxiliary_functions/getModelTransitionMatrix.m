@@ -1,7 +1,6 @@
-function [carrierStateTransitionMatrix, channelStateTransitionMatrix] = getModelTransitionMatrix(epoch, carrierFrequency, numberOfTaps)
+function [carrierStateTransitionMatrix, channelStateTransitionMatrix] = getModelTransitionMatrix(epoch, numberOfTaps, beta)
 %GETMODELTRANSITIONMATRIX Summary of this function goes here
 %   Detailed explanation goes here
-beta = -1 / (2 * pi * carrierFrequency);
 T = epoch;
 
 carrierStateTransitionMatrix = [

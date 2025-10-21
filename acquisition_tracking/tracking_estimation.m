@@ -40,15 +40,14 @@ errorStateRecord = zeros(4, simulationSteps);
 channelStateRecord = zeros(3, simulationSteps);
 innovationRecord = zeros(C, simulationSteps);
 
-%% Transition Matrices
-[F_W, F_H] = getModelTransitionMatrix( epoch, ...
-    configuration.carrierFrequency, q);
-
 %% Cost Functions
-beta = -1 / (2 * pi * configuration.carrierFrequency);
+beta = 1 / (2 * pi * configuration.carrierFrequency);
 relation = 0.5;
 T_e =  relation * diag([beta, 1, 1/epoch, 2/epoch^2]);
 T_u =  diag([beta, 1, 1/epoch, 2/epoch^2]);
+
+%% Transition Matrices
+[F_W, F_H] = getModelTransitionMatrix(epoch, q, beta);
 
 %% Coupling Matrix for Control Signal
 B_LQG = eye(4);
@@ -72,8 +71,8 @@ channelCovarianceMatrix(1,1) = 0; % 0.001;
 
 % NOTE: I changed from x_k_k to P_k_k_1, because, in fact the
 % initialization uses P[1|0].
-% P_k_k_1 = blkdiag(1e-1, (2*pi)^2/12, (50)^2/12, 0, channelCovarianceMatrix); 
-P_k_k_1 = blkdiag(0, 0, 0, 0, zeros(1 + q));
+P_k_k_1 = blkdiag(1e-1, (2*pi)^2/12, (50)^2/12, 0, channelCovarianceMatrix); 
+% P_k_k_1 = blkdiag(0, 0, 0, 0, zeros(1 + q));
 
 phaseError = 0.5;
 DopplerError = 0;
