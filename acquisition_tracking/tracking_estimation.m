@@ -2,12 +2,12 @@ clearvars; clc; close all;
 
 addpath(genpath(fullfile("..", "..","EKF_channel_estimator")));
 
-load config_no_doppler.mat
+load config_cte_doppler.mat
 rng(26437226);
 
 %% Parameters
 simulationSteps = 500;
-q = 7;
+q = 2;
 C = 2*q + 1;
 middleSample = q + 1;
 epoch = configuration.totalChips / configuration.chippingFrequency;
@@ -23,7 +23,7 @@ carrierToNoiseRatioLinear = 10^(configuration.carrierToNoiseDensityRatio / 10);
 % Compute the noise variance
 thermalNoiseVarianceSquared = configuration.samplingFrequency / carrierToNoiseRatioLinear;
 
-sigma2Vec = [1e-1 1e-1 1e-2 2.6*10^(-1) 0];
+sigma2Vec = [1e1 1e2 1e1 2.6*10^(0) 0];
 Q = getStateCovarianceMatrix(...
     sigma2Vec, ...
     epoch, ...
@@ -38,9 +38,10 @@ LQGStateRecord = zeros(4, simulationSteps);
 errorStateRecord = zeros(4, simulationSteps);
 channelStateRecord = zeros(3, simulationSteps);
 innovationRecord = zeros(C, simulationSteps);
+kalmanGainRecord = zeros(4 + q + 1,C, simulationSteps);
 
 %% Cost Functions
-relation = 0.3;
+relation = 0.9;
 T_e =  relation * diag([1, 1, 1/epoch, 2/epoch^2]);
 T_u =  diag([1, 1, 1/epoch, 2/epoch^2]);
 
@@ -72,9 +73,9 @@ channelCovarianceMatrix(1,1) = 0; % 0.001;
 P_k_k_1 = blkdiag(1e-1, (2*pi)^2/12, (50)^2/12, 0, channelCovarianceMatrix); 
 % P_k_k_1 = blkdiag(0, 0, 0, 0, zeros(1 + q));
 
-phaseError = 0;
-DopplerError = 1;
-x_LQG_k = [1.000e-4, ...
+phaseError = 1;
+DopplerError = 25;
+x_LQG_k = [1.0025e-4, ...
     configuration.dopplerProfile(1) + phaseError, ...
     2*pi*(configuration.dopplerProfile(2) + DopplerError), ...
     2*pi*configuration.dopplerProfile(3)].';
@@ -86,7 +87,8 @@ configuration.addNoise = false;
 [simulatedSignal, ~, LOSPhase, LOSDelay] = gnssReceivedSignal(configuration, simulationSteps + 1);
 
 %% Simulation
-plotMeasures = false;
+plotMeasures = true;
+correlatorTaps = -q:1:q;
 %NOTE: (Rodrigo): Changed the main loop to match algorithm 1 of my report.
 for k = 1 : simulationSteps
     %% Signal 
@@ -111,11 +113,16 @@ for k = 1 : simulationSteps
         
         if plotMeasures
             % ---- Plot routine -----
-            plot(abs(z_k));
+            plot(correlatorTaps, real(z_k));
             hold on;
-            plot(abs(z_hat_k));
+            plot(correlatorTaps, real(z_hat_k));
+            plot(correlatorTaps, imag(z_k));
+            plot(correlatorTaps, imag(z_hat_k));
             hold off;
-            pause(0.1)
+            ylabel('Real and Imag parts of z_k and z_k_hat');
+            xlabel('Correlator tap');
+            legend({'Real z[k]', 'Real $\hat{z}[k]$', 'Imag z[k]', 'Imag \hat{z}[k]'});
+            pause(0.1);
         end
         
         % Compute Jacobian
@@ -141,7 +148,8 @@ for k = 1 : simulationSteps
         % Compute Kalman Gain
         K_k = P_k_k_1 * jacobian'...
             *((jacobian * P_k_k_1 * jacobian' + R) \ eye(C));
-    
+        kalmanGainRecord(:,:, k) = K_k;
+
         % Obtain the innovation
         innovation = z_k - z_hat_k;
         innovationRecord(:, k) = innovation;
@@ -170,20 +178,23 @@ for k = 1 : simulationSteps
 end
 %% Plots
 
+lineWidth = 2;
+fontSize = 13;
+
 epochVector = 1:simulationSteps;
 
 % Observe the STD of the innovation sequence time series
 innovationStdRecord = std(innovationRecord,1,1);
 figure(Name="STD of the innovations", NumberTitle="off");
-plot(epochVector, innovationStdRecord);
+plot(epochVector, innovationStdRecord, 'LineWidth', lineWidth);
 ylabel("Standard deviation of the innovations");
 xlabel("Epochs (Simulation Steps)");
 
 % Observe the innovation sequence time series
 figure(Name="Middle tap of the innovation sequence", NumberTitle="off");
 hold on;
-plot(epochVector, real(innovationRecord(middleSample,:)));
-plot(epochVector, imag(innovationRecord(middleSample,:)));
+plot(epochVector, real(innovationRecord(middleSample,:)), 'LineWidth', lineWidth);
+plot(epochVector, imag(innovationRecord(middleSample,:)), 'LineWidth', lineWidth);
 legend({"Real", "Imaginary"});
 ylabel("Innovation sequence of the middle tap");
 xlabel("Epochs (Simulation Steps)");
@@ -191,8 +202,8 @@ hold off;
 
 figure(Name="Delay Estimation", NumberTitle="off");
 hold on;
-plot(epochVector, LQGStateRecord(1,:));
-plot(epochVector, LOSDelay(epochVector*4));
+plot(epochVector, LQGStateRecord(1,:), 'LineWidth', lineWidth);
+plot(epochVector, LOSDelay(epochVector*4), 'LineWidth', lineWidth);
 legend({"LQG's estimated delay", "True delay"});
 ylabel("Delay estimate");
 xlabel("Epochs (Simulation Steps)");
@@ -200,8 +211,8 @@ hold off;
 
 figure(Name="Delay Error State", NumberTitle="off");
 hold on;
-plot(errorStateRecord(1, :));
-plot(epochVector, zeros(1, simulationSteps));
+plot(errorStateRecord(1, :), 'LineWidth', lineWidth);
+plot(epochVector, zeros(1, simulationSteps), 'LineWidth', lineWidth);
 legend({"EKF's estimated delay error", "Zero line"});
 ylabel("Delay error estimate");
 xlabel("Epochs (Simulation Steps)");
@@ -209,8 +220,8 @@ hold off;
 
 figure(Name="Phase Estimation", NumberTitle="off");
 hold on;
-plot(epochVector, LQGStateRecord(2,:));
-plot(epochVector, LOSPhase(epochVector*4));
+plot(epochVector, LQGStateRecord(2,:), 'LineWidth', lineWidth);
+plot(epochVector, LOSPhase(epochVector*4), 'LineWidth', lineWidth);
 legend({"LQG's estimated phase", "True Phase"});
 ylabel("Phase estimate");
 xlabel("Epochs (Simulation Steps)");
@@ -218,8 +229,8 @@ hold off;
 
 figure(Name="Phase Error State", NumberTitle="off");
 hold on;
-plot(errorStateRecord(2, :));
-plot(epochVector, zeros(1, simulationSteps));
+plot(errorStateRecord(2, :), 'LineWidth', lineWidth);
+plot(epochVector, zeros(1, simulationSteps), 'LineWidth', lineWidth);
 legend({"EKF's estimated phase error", "Zero line"});
 ylabel("Phase error estimate");
 xlabel("Epochs (Simulation Steps)");
@@ -227,8 +238,8 @@ hold off;
 
 figure(Name="Doppler Estimation", NumberTitle="off");
 hold on;
-plot(epochVector, LQGStateRecord(3,:));
-plot(epochVector, 2*pi*configuration.dopplerProfile(2) * ones(1,length(epochVector)));
+plot(epochVector, LQGStateRecord(3,:), 'LineWidth', lineWidth);
+plot(epochVector, 2*pi*configuration.dopplerProfile(2) * ones(1,length(epochVector)), 'LineWidth', lineWidth);
 legend({"LQG's estimated Doppler frequency", "True Doppler frequency"});
 ylabel("Doppler estimate");
 xlabel("Epochs (Simulation Steps)");
@@ -236,9 +247,35 @@ hold off;
 
 figure(Name="Doppler Error State", NumberTitle="off");
 hold on;
-plot(errorStateRecord(3, :));
-plot(epochVector, zeros(1, simulationSteps));
+plot(errorStateRecord(3, :), 'LineWidth', lineWidth);
+plot(epochVector, zeros(1, simulationSteps), 'LineWidth', lineWidth);
 ylabel("Doppler error estimate");
 xlabel("Epochs (Simulation Steps)");
 legend({"EKF's estimated Doppler error", "Zero line"});
+hold off;
+
+figure(Name="Real Kalman Gain Elements", NumberTitle="off");
+hold on;
+for i = 1:size(kalmanGainRecord, 1)
+    for j = 1:size(kalmanGainRecord, 2)
+        plot(epochVector, squeeze(real(kalmanGainRecord(i, j, :))), 'DisplayName', sprintf('K_{%d,%d}', i, j), 'LineWidth', lineWidth);
+    end
+end
+legend show;
+ylabel("Real Kalman Gain Elements");
+xlabel("Epochs (Simulation Steps)");
+set(gca, "FontSize", fontSize);
+hold off;
+
+figure(Name="Imaginary Kalman Gain Elements", NumberTitle="off");
+hold on;
+for i = 1:size(kalmanGainRecord, 1)
+    for j = 1:size(kalmanGainRecord, 2)
+        plot(epochVector, squeeze(imag(kalmanGainRecord(i, j, :))), 'DisplayName', sprintf('K_{%d,%d}', i, j), 'LineWidth', lineWidth);
+    end
+end
+legend show;
+ylabel("Imaginary Kalman Gain Elements");
+xlabel("Epochs (Simulation Steps)");
+set(gca, "FontSize", fontSize);
 hold off;
