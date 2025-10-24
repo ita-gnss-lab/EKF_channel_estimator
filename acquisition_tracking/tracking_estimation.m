@@ -23,7 +23,7 @@ carrierToNoiseRatioLinear = 10^(configuration.carrierToNoiseDensityRatio / 10);
 % Compute the noise variance
 thermalNoiseVarianceSquared = configuration.samplingFrequency / carrierToNoiseRatioLinear;
 
-sigma2Vec = [1e1 0 0 1e-4 0];
+sigma2Vec = [1e-1 1e-1 1e-3 1e-1 0];
 Q = getStateCovarianceMatrix(...
     sigma2Vec, ...
     epoch, ...
@@ -41,20 +41,24 @@ innovationRecord = zeros(C, simulationSteps);
 kalmanGainRecord = zeros(4 + q + 1,C, simulationSteps);
 
 %% Cost Functions
-I4 = eye(4);
+% I4 = eye(4);
+% 
+% % Bryson-style targets (tune as needed)
+% sig_tau  = 1e-4;    % s
+% sig_phi  = 2e-3;    % rad
+% sig_nu   = 1e-2;    % rad/
+% sig_nud  = 2e-1;    % rad/s^2
+% 
+% T_e_0 = diag([1/sig_tau^2, 1/sig_phi^2, 1/sig_nu^2, 1/sig_nud^2]);
+% T_u_0 = 1e-2*eye(4);  % small => fast
+% 
+% kappa = 5; % speed knob
+% T_e = kappa*T_e_0;
+% T_u = T_u_0/kappa;
 
-% Bryson-style targets (tune as needed)
-sig_tau  = 1e-15;    % s
-sig_phi  = 2e-12;    % rad
-sig_nu   = 1e-11;    % rad/
-sig_nud  = 2e-10;    % rad/s^2
-
-T_e_0 = diag([1/sig_tau^2, 1/sig_phi^2, 1/sig_nu^2, 1/sig_nud^2]);
-T_u_0 = 1e-5*eye(4);  % small => fast
-
-kappa = 0.1;          % speed knob
-T_e = kappa*T_e_0;
-T_u = T_u_0/kappa;
+relation = 10;
+T_e = relation * diag([beta, 1, 1/epoch, 1/epoch^2]);
+T_u = diag([beta, 1, 1/epoch, 1/epoch^2]);
 
 %% Transition Matrices
 [F_W, F_H] = getModelTransitionMatrix(epoch, q, beta);
@@ -64,11 +68,9 @@ B_LQG = eye(4);
 
 %% IDARE Solution
 [~, L, ~] = idare(F_W, B_LQG, T_e, T_u, [], []);
-% Inspect closed-loop poles for speed/oscillation
-eig(F_W - L)
 
 %% Full transition matrix
-F = blkdiag(F_W - L, F_H);
+F = blkdiag(F_W, F_H);
 
 %% Initialization
 % NOTE: I changed from x_k_k to x_k_k_1, because, in fact the
@@ -83,12 +85,12 @@ channelCovarianceMatrix(1,1) = 0; % 0.001;
 
 % NOTE: I changed from x_k_k to P_k_k_1, because, in fact the
 % initialization uses P[1|0].
-P_k_k_1 = blkdiag(1e-1, 0, (25)^2/12, (1)^2/12, channelCovarianceMatrix); 
+P_k_k_1 = blkdiag(1e-1, 0, (50)^2/12, (0.1)^2/12, channelCovarianceMatrix); 
 % P_k_k_1 = blkdiag(1e-1, 0, 0, 0, zeros(1 + q));
 
 phaseError = 0.5;
-DopplerError = 1;
-x_LQG_k = [1.000e-4, ...
+DopplerError = 25;
+x_LQG_k = [1.005e-4, ...
     configuration.dopplerProfile(1) + phaseError, ...
     2*pi*(configuration.dopplerProfile(2) + DopplerError), ...
     2*pi*configuration.dopplerProfile(3)].';
