@@ -2,12 +2,12 @@ clearvars; clc; close all;
 
 addpath(genpath(fullfile("..", "..","EKF_channel_estimator")));
 
-load config_cte_doppler.mat
+load config_no_doppler.mat
 rng(26437226);
 
 %% Parameters
 simulationSteps = 500;
-q = 2;
+q = 5;
 C = 2*q + 1;
 middleSample = q + 1;
 epoch = configuration.totalChips / configuration.chippingFrequency;
@@ -23,7 +23,7 @@ carrierToNoiseRatioLinear = 10^(configuration.carrierToNoiseDensityRatio / 10);
 % Compute the noise variance
 thermalNoiseVarianceSquared = configuration.samplingFrequency / carrierToNoiseRatioLinear;
 
-sigma2Vec = [1e1 1e2 1e1 2.6*10^(0) 0];
+sigma2Vec = [1e1 0 0 1e-4 0];
 Q = getStateCovarianceMatrix(...
     sigma2Vec, ...
     epoch, ...
@@ -41,9 +41,20 @@ innovationRecord = zeros(C, simulationSteps);
 kalmanGainRecord = zeros(4 + q + 1,C, simulationSteps);
 
 %% Cost Functions
-relation = 0.9;
-T_e =  relation * diag([1, 1, 1/epoch, 2/epoch^2]);
-T_u =  diag([1, 1, 1/epoch, 2/epoch^2]);
+I4 = eye(4);
+
+% Bryson-style targets (tune as needed)
+sig_tau  = 1e-15;    % s
+sig_phi  = 2e-12;    % rad
+sig_nu   = 1e-11;    % rad/
+sig_nud  = 2e-10;    % rad/s^2
+
+T_e_0 = diag([1/sig_tau^2, 1/sig_phi^2, 1/sig_nu^2, 1/sig_nud^2]);
+T_u_0 = 1e-5*eye(4);  % small => fast
+
+kappa = 0.1;          % speed knob
+T_e = kappa*T_e_0;
+T_u = T_u_0/kappa;
 
 %% Transition Matrices
 [F_W, F_H] = getModelTransitionMatrix(epoch, q, beta);
@@ -53,6 +64,8 @@ B_LQG = eye(4);
 
 %% IDARE Solution
 [~, L, ~] = idare(F_W, B_LQG, T_e, T_u, [], []);
+% Inspect closed-loop poles for speed/oscillation
+eig(F_W - L)
 
 %% Full transition matrix
 F = blkdiag(F_W - L, F_H);
@@ -70,12 +83,12 @@ channelCovarianceMatrix(1,1) = 0; % 0.001;
 
 % NOTE: I changed from x_k_k to P_k_k_1, because, in fact the
 % initialization uses P[1|0].
-P_k_k_1 = blkdiag(1e-1, (2*pi)^2/12, (50)^2/12, 0, channelCovarianceMatrix); 
-% P_k_k_1 = blkdiag(0, 0, 0, 0, zeros(1 + q));
+P_k_k_1 = blkdiag(1e-1, 0, (25)^2/12, (1)^2/12, channelCovarianceMatrix); 
+% P_k_k_1 = blkdiag(1e-1, 0, 0, 0, zeros(1 + q));
 
-phaseError = 1;
-DopplerError = 25;
-x_LQG_k = [1.0025e-4, ...
+phaseError = 0.5;
+DopplerError = 1;
+x_LQG_k = [1.000e-4, ...
     configuration.dopplerProfile(1) + phaseError, ...
     2*pi*(configuration.dopplerProfile(2) + DopplerError), ...
     2*pi*configuration.dopplerProfile(3)].';
@@ -87,9 +100,9 @@ configuration.addNoise = false;
 [simulatedSignal, ~, LOSPhase, LOSDelay] = gnssReceivedSignal(configuration, simulationSteps + 1);
 
 %% Simulation
-plotMeasures = true;
+plotMeasures = false;
 correlatorTaps = -q:1:q;
-%NOTE: (Rodrigo): Changed the main loop to match algorithm 1 of my report.
+% NOTE: (Rodrigo): Changed the main loop to match algorithm 1 of my report.
 for k = 1 : simulationSteps
     %% Signal 
     receivedSignal = simulatedSignal(((k - 1) * samplesTotal + 1: k * samplesTotal));
@@ -121,7 +134,7 @@ for k = 1 : simulationSteps
             hold off;
             ylabel('Real and Imag parts of z_k and z_k_hat');
             xlabel('Correlator tap');
-            legend({'Real z[k]', 'Real $\hat{z}[k]$', 'Imag z[k]', 'Imag \hat{z}[k]'});
+            legend({'Real $z[k]$', 'Real $\hat{z}[k]$', 'Imag $z[k]$', 'Imag $\hat{z}[k]$'}, 'Interpreter','latex');
             pause(0.1);
         end
         

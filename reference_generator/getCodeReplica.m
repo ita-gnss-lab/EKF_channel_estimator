@@ -24,5 +24,5 @@ function signal = getCodeReplica(configuration, delaySeconds)
     refExtended = [ref(:); ref(1)];
 
     signal = interp1(0:N, refExtended, queryPoints, "linear");
-    signal = signal(:).';
+    signal = signal(:);
 end
