@@ -16,6 +16,6 @@ shiftedCorrelationsMatrix = getShiftedCorrelations( ...
 %% Get Estimated Measurement
 totalPhaseError = x_k_k_1(2);
 estimative = exp(1j * totalPhaseError) * ...
-    sum(channelWeights.' .* shiftedCorrelationsMatrix, 2); 
+    (shiftedCorrelationsMatrix * channelWeights); 
 
 end
