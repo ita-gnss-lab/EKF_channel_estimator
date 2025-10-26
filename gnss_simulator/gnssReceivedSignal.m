@@ -26,7 +26,7 @@ sampledCode = rangingCode(currentChip);
 [LOSPhase, LOSDelay] = get_LOS_dynamics(time, configuration.dopplerProfile, configuration.carrierFrequency);
 % Applies the delay
 delayInSamples = LOSDelay * configuration.samplingFrequency;
-delayHandler = dsp.VariableFractionalDelay("InterpolationMethod","Linear", 'MaximumDelay',9999);
+delayHandler = dsp.VariableIntegerDelay('MaximumDelay',9999);
 delayedCode = delayHandler(sampledCode, delayInSamples);
 % delayInSamples = round(LOSDelay * configuration.samplingFrequency);
 % delayedCode = circshift(sampledCode, delayInSamples);
