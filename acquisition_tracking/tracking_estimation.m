@@ -6,7 +6,7 @@ load config_no_doppler.mat
 rng(26437226);
 
 %% Parameters
-simulationSteps = 1500;
+simulationSteps = 500;
 q = 4;
 C = 2*q + 1;
 middleSample = q + 1;
@@ -23,7 +23,7 @@ carrierToNoiseRatioLinear = 10^(configuration.carrierToNoiseDensityRatio / 10);
 % Compute the noise variance
 thermalNoiseVarianceSquared = configuration.samplingFrequency / carrierToNoiseRatioLinear;
 
-sigma2Vec = [1e0, 1e-1, 1e-3, 1e-4, 1e-9, 1e-8];
+sigma2Vec = [1e-4, 1e-1, 1e-2, 1e-3, 1e-6, 0];
 Q = getStateCovarianceMatrix(...
     sigma2Vec, ...
     epoch, ...
@@ -41,7 +41,7 @@ kalmanGainRecord = zeros(4 + q + 1,C, simulationSteps);
 channelStateRecord = zeros(q + 1, simulationSteps);
 
 %% Cost Functions
-relation = 10;
+relation = 20;
 T_e = relation * diag([beta, 1, 1/epoch, 1/epoch^2]);
 T_u = diag([beta, 1, 1/epoch, 1/epoch^2]);
 
@@ -58,19 +58,19 @@ B_LQG = eye(4);
 F = blkdiag(F_W, F_H);
 
 %% Channel model
-channelTaps = [1, ...
-    0.7 + 1j * 0.6, ...
-    0.4 - 1j * 0.4, ...
-    0.2 - 1j * 0.02, ...
-    -0.1 + 1j * 0.001];
-
+% channelTaps = [1, ...
+%     0.7 + 1j * 0.6, ...
+%     0.4 - 1j * 0.4, ...
+%     0.2 - 1j * 0.02, ...
+%     -0.1 + 1j * 0.001];
+channelTaps = [1, zeros(1,q)];
 %% Initialization
 % NOTE: I changed from x_k_k to x_k_k_1, because, in fact the
 % initialization uses x[1|0].
 x_k_k_1 = zeros(4 + q + 1, 1);
 
 % EKF channel state init: noisy around truth
-sigmaInit = 1e-3;
+sigmaInit = 1e-4;
 
 x_k_k_1(5:5 + q + 1 - 1) = channelTaps(:) + ...
     sigmaInit * (randn(q + 1,1)+1j*randn(q + 1,1))/sqrt(2);
@@ -78,15 +78,16 @@ x_k_k_1(5:5 + q + 1 - 1) = channelTaps(:) + ...
 % HACK: I zeroed this initial covariance matrix to my analysis about the
 % phase estimation.
 channelInitCovarianceMatrix = 1e-6 * eye(q + 1); %0.000001 * eye(1 + q);
+channelInitCovarianceMatrix(1,1) = 1e-4;
 
 % NOTE: I changed from x_k_k to P_k_k_1, because, in fact the
 % initialization uses P[1|0].
-P_k_k_1 = blkdiag(1e-1, 0, (50)^2/12, (0.1)^2/12, channelInitCovarianceMatrix); 
+P_k_k_1 = blkdiag(1e-1, 0, 0, (0.1)^2/12, channelInitCovarianceMatrix); 
 % P_k_k_1 = blkdiag(0, 0, 0, 0, zeros(1 + q));
 
-phaseError = 0;
+phaseError = 0.5;
 DopplerError = 0;
-x_LQG_k = [1.000e-4, ...
+x_LQG_k = [1.005e-4, ...
     configuration.dopplerProfile(1) + phaseError, ...
     2*pi*(configuration.dopplerProfile(2) + DopplerError), ...
     2*pi*configuration.dopplerProfile(3)].';

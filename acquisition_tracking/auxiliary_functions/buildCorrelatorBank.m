@@ -8,6 +8,9 @@ function bank = buildCorrelatorBank(configuration, delaySeconds, q)
     row = 1;
     for m = mValues
         % Shift replica by -m so Delta_{l,m} = eps_tau + (l + m)Ts in the model
+        % NOTE: For circshift, the second argument is the delay in samples.
+        % Therefore, +1 in the input generates a -1 sample delay. This is
+        % way we need to use -m.
         bank(row, :) = circshift(signal, -m);
         row = row + 1;
     end
