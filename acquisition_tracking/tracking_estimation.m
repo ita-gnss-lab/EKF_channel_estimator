@@ -2,11 +2,11 @@ clearvars; clc; close all;
 
 addpath(genpath(fullfile("..", "..","EKF_channel_estimator")));
 
-load config_cte_doppler.mat
+load config_no_doppler.mat
 rng(26437226);
 
 %% Parameters
-simulationSteps = 500;
+simulationSteps = 1500;
 q = 4;
 C = 2*q + 1;
 middleSample = q + 1;
@@ -23,7 +23,7 @@ carrierToNoiseRatioLinear = 10^(configuration.carrierToNoiseDensityRatio / 10);
 % Compute the noise variance
 thermalNoiseVarianceSquared = configuration.samplingFrequency / carrierToNoiseRatioLinear;
 
-sigma2Vec = [1e-1 1e-1 1e-2 1e-3 1e-6];
+sigma2Vec = [1e0, 1e-1, 1e-3, 1e-4, 1e-9, 1e-8];
 Q = getStateCovarianceMatrix(...
     sigma2Vec, ...
     epoch, ...
@@ -41,21 +41,6 @@ kalmanGainRecord = zeros(4 + q + 1,C, simulationSteps);
 channelStateRecord = zeros(q + 1, simulationSteps);
 
 %% Cost Functions
-% I4 = eye(4);
-% 
-% % Bryson-style targets (tune as needed)
-% sig_tau  = 1e-4;    % s
-% sig_phi  = 2e-3;    % rad
-% sig_nu   = 1e-2;    % rad/
-% sig_nud  = 2e-1;    % rad/s^2
-% 
-% T_e_0 = diag([1/sig_tau^2, 1/sig_phi^2, 1/sig_nu^2, 1/sig_nud^2]);
-% T_u_0 = 1e-2*eye(4);  % small => fast
-% 
-% kappa = 5; % speed knob
-% T_e = kappa*T_e_0;
-% T_u = T_u_0/kappa;
-
 relation = 10;
 T_e = relation * diag([beta, 1, 1/epoch, 1/epoch^2]);
 T_u = diag([beta, 1, 1/epoch, 1/epoch^2]);
@@ -72,24 +57,12 @@ B_LQG = eye(4);
 %% Full transition matrix
 F = blkdiag(F_W, F_H);
 
-%% --- Random channel taps: Rician with exponential PDP ---
-rng(42);                               % reproducible
-K_dB = 25;
-K = 10^(K_dB/10);
-tau = 1.2; % PDP decay (samples)
-totalPow = 1; % total tap power (sum |h|^2)
-
-pdp = exp(-(0:q + 1-1)/tau);                % exponential PDP
-pdp = pdp / sum(pdp) * totalPow;        % normalize to target total power
-
-losIdx = 1; % LOS on tap 0 (use 1-based idx); choose another if you want
-h_los = zeros(q + 1,1);
-h_los(losIdx) = sqrt(K/(K+1) * pdp(losIdx));
-
-% scattered (Rayleigh) on all taps
-h_scatt = (randn(q + 1,1) + 1j*randn(q + 1,1))/sqrt(2) .* sqrt((1/(K+1)) * pdp(:));
-
-channelTaps = (h_los + h_scatt).';      % row vector to match your code
+%% Channel model
+channelTaps = [1, ...
+    0.7 + 1j * 0.6, ...
+    0.4 - 1j * 0.4, ...
+    0.2 - 1j * 0.02, ...
+    -0.1 + 1j * 0.001];
 
 %% Initialization
 % NOTE: I changed from x_k_k to x_k_k_1, because, in fact the
@@ -97,27 +70,23 @@ channelTaps = (h_los + h_scatt).';      % row vector to match your code
 x_k_k_1 = zeros(4 + q + 1, 1);
 
 % EKF channel state init: noisy around truth
-sigmaInit = 1e-1; % relative RMS vs PDP (tune)
-
-% scale noise per PDP so early taps tend to have larger prior variance
-pdp_est = abs(channelTaps).^2;
-pdp_est = pdp_est / max(pdp_est);  % simple shape; avoid huge values
+sigmaInit = 1e-3;
 
 x_k_k_1(5:5 + q + 1 - 1) = channelTaps(:) + ...
-    sigmaInit * ((randn(q + 1,1)+1j*randn(q + 1,1))/sqrt(2)) .* sqrt(pdp_est(:));
+    sigmaInit * (randn(q + 1,1)+1j*randn(q + 1,1))/sqrt(2);
 
 % HACK: I zeroed this initial covariance matrix to my analysis about the
 % phase estimation.
-channelCovarianceMatrix = 1e-8 * eye(q + 1); %0.000001 * eye(1 + q);
+channelInitCovarianceMatrix = 1e-6 * eye(q + 1); %0.000001 * eye(1 + q);
 
 % NOTE: I changed from x_k_k to P_k_k_1, because, in fact the
 % initialization uses P[1|0].
-P_k_k_1 = blkdiag(1e-1, 0, (50)^2/12, (0.1)^2/12, channelCovarianceMatrix); 
-% P_k_k_1 = blkdiag(1e-1, 0, 0, 0, zeros(1 + q));
+P_k_k_1 = blkdiag(1e-1, 0, (50)^2/12, (0.1)^2/12, channelInitCovarianceMatrix); 
+% P_k_k_1 = blkdiag(0, 0, 0, 0, zeros(1 + q));
 
-phaseError = 0.5;
-DopplerError = 25;
-x_LQG_k = [1.005e-4, ...
+phaseError = 0;
+DopplerError = 0;
+x_LQG_k = [1.000e-4, ...
     configuration.dopplerProfile(1) + phaseError, ...
     2*pi*(configuration.dopplerProfile(2) + DopplerError), ...
     2*pi*configuration.dopplerProfile(3)].';
@@ -125,7 +94,7 @@ x_LQG_k = [1.005e-4, ...
 u_LQG = L * x_k_k_1(WienerStatesSelection);
 
 %% Simulate Signal
-configuration.addNoise = true;
+configuration.addNoise = false;
 [simulatedSignalRaw, ~, LOSPhase, LOSDelay] = gnssReceivedSignal(configuration, simulationSteps + 1);
 simulatedSignal = applyChannelIR(simulatedSignalRaw, channelTaps);
 %% Simulation
@@ -181,7 +150,7 @@ for k = 1 : simulationSteps
         dopplerJacobian = zeros(2*q + 1, 2);
         channelOrder = numel(x_k_k_1(5:end)) - 1;
         channelWeightsJacobian = exp(1j * x_k_k_1(2)) .* ...
-            getShiftedCorrelations(x_k_k_1(1), q, configuration, channelOrder) / samplesTotal;
+            getShiftedCorrelations(x_k_k_1(1), q, configuration) / samplesTotal;
         jacobian = [delayJacobian ...
             phaseJacobian ...
             dopplerJacobian ...
@@ -246,7 +215,7 @@ hold off;
 figure(Name="Delay Estimation", NumberTitle="off");
 hold on;
 plot(epochVector, LQGStateRecord(1,:), 'LineWidth', lineWidth);
-plot(epochVector, LOSDelay(epochVector*4096), 'LineWidth', lineWidth);
+plot(epochVector, LOSDelay(epochVector*samplesTotal), 'LineWidth', lineWidth);
 legend({"LQG's estimated delay", "True delay"});
 ylabel("Delay estimate");
 xlabel("Epochs (Simulation Steps)");
@@ -264,7 +233,7 @@ hold off;
 figure(Name="Phase Estimation", NumberTitle="off");
 hold on;
 plot(epochVector, LQGStateRecord(2,:), 'LineWidth', lineWidth);
-plot(epochVector, LOSPhase(epochVector*4096), 'LineWidth', lineWidth);
+plot(epochVector, LOSPhase(epochVector*samplesTotal), 'LineWidth', lineWidth);
 legend({"LQG's estimated phase", "True Phase"});
 ylabel("Phase estimate");
 xlabel("Epochs (Simulation Steps)");
@@ -339,3 +308,31 @@ scatter(1:m, imag(channelTaps(1:m)), 36, 'b', 'filled', 'DisplayName','True');
 xticklabels(arrayfun(@num2str, 0:size(channelStateRecord,1)-1, 'UniformOutput', false));
 xlabel("Tap index (samples)"); ylabel("Imag part");
 set(gca, "FontSize", fontSize); grid on; legend('Location','best'); hold off;
+
+% Prepare orientation: rows = taps, cols = time/iterations
+X = channelStateRecord;
+if size(X,1) ~= numel(channelTaps), X = X.'; end
+m = min(size(X,1), numel(channelTaps));
+
+% === Real part ===
+figure(Name="Channel Taps (Real) — Estimates vs True", NumberTitle="off"); hold on;
+h_real = gobjects(1,m);
+for r = 1:m
+    h_real(r) = plot(real(X(r,:)), "DisplayName", sprintf('\\hat{h}_{%d} (real)', r-1));
+    yline(real(channelTaps(r)), '--', 'Color', h_real(r).Color, ...
+          'HandleVisibility','off');   % same color as the estimate
+end
+xlabel("Iteration / time index"); ylabel("Real part");
+set(gca,"FontSize",fontSize); grid on; legend('Location','best'); hold off;
+
+% === Imag part ===
+figure(Name="Channel Taps (Imag) — Estimates vs True", NumberTitle="off"); hold on;
+h_imag = gobjects(1,m);
+for r = 1:m
+    h_imag(r) = plot(imag(X(r,:)), "DisplayName", sprintf('\\hat{h}_{%d} (imag)', r-1));
+    yline(imag(channelTaps(r)), '--', 'Color', h_imag(r).Color, ...
+          'HandleVisibility','off');   % same color as the estimate
+end
+xlabel("Iteration / time index"); ylabel("Imag part");
+set(gca,"FontSize",fontSize); grid on; legend('Location','best'); hold off;
+

@@ -11,7 +11,7 @@ else
 end
 
 shiftedCorrelationsMatrix = getShiftedCorrelations( ...
-    delayError, correlatorHalfSpan, configuration, channelOrder);
+    delayError, correlatorHalfSpan, configuration);
 
 %% Get Estimated Measurement
 totalPhaseError = x_k_k_1(2);

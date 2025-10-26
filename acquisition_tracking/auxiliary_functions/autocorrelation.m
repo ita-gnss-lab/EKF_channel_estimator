@@ -6,7 +6,7 @@ autocorrelation = zeros(size(delay, 1), size(delay, 2));
 for i = 1:size(delay, 1)
     for j = 1:size(delay, 2)
     signalDelayed = getCodeReplica(configuration, delay(i, j))';
-    autocorrelation(i, j) = signal * signalDelayed.';
+    autocorrelation(i, j) = signal * signalDelayed';
     end
 end
 end
