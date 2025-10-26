@@ -7,7 +7,7 @@ rng(26437226);
 
 %% Parameters
 simulationSteps = 500;
-q = 5;
+q = 4;
 C = 2*q + 1;
 middleSample = q + 1;
 epoch = configuration.totalChips / configuration.chippingFrequency;
@@ -23,7 +23,7 @@ carrierToNoiseRatioLinear = 10^(configuration.carrierToNoiseDensityRatio / 10);
 % Compute the noise variance
 thermalNoiseVarianceSquared = configuration.samplingFrequency / carrierToNoiseRatioLinear;
 
-sigma2Vec = [1e-1 1e-1 1e-2 1e-3 0];
+sigma2Vec = [1e-1 1e-1 1e-2 1e-3 1e-6];
 Q = getStateCovarianceMatrix(...
     sigma2Vec, ...
     epoch, ...
@@ -36,9 +36,9 @@ R = (thermalNoiseVarianceSquared / samplesTotal.^2) * ...
 %% State History Vectors
 LQGStateRecord = zeros(4, simulationSteps);
 errorStateRecord = zeros(4, simulationSteps);
-channelStateRecord = zeros(3, simulationSteps);
 innovationRecord = zeros(C, simulationSteps);
 kalmanGainRecord = zeros(4 + q + 1,C, simulationSteps);
+channelStateRecord = zeros(q + 1, simulationSteps);
 
 %% Cost Functions
 % I4 = eye(4);
@@ -72,16 +72,43 @@ B_LQG = eye(4);
 %% Full transition matrix
 F = blkdiag(F_W, F_H);
 
+%% --- Random channel taps: Rician with exponential PDP ---
+rng(42);                               % reproducible
+K_dB = 25;
+K = 10^(K_dB/10);
+tau = 1.2; % PDP decay (samples)
+totalPow = 1; % total tap power (sum |h|^2)
+
+pdp = exp(-(0:q + 1-1)/tau);                % exponential PDP
+pdp = pdp / sum(pdp) * totalPow;        % normalize to target total power
+
+losIdx = 1; % LOS on tap 0 (use 1-based idx); choose another if you want
+h_los = zeros(q + 1,1);
+h_los(losIdx) = sqrt(K/(K+1) * pdp(losIdx));
+
+% scattered (Rayleigh) on all taps
+h_scatt = (randn(q + 1,1) + 1j*randn(q + 1,1))/sqrt(2) .* sqrt((1/(K+1)) * pdp(:));
+
+channelTaps = (h_los + h_scatt).';      % row vector to match your code
+
 %% Initialization
 % NOTE: I changed from x_k_k to x_k_k_1, because, in fact the
 % initialization uses x[1|0].
-x_k_k_1 = zeros(q + 5, 1);
-x_k_k_1(5) = 1;
+x_k_k_1 = zeros(4 + q + 1, 1);
+
+% EKF channel state init: noisy around truth
+sigmaInit = 1e-1; % relative RMS vs PDP (tune)
+
+% scale noise per PDP so early taps tend to have larger prior variance
+pdp_est = abs(channelTaps).^2;
+pdp_est = pdp_est / max(pdp_est);  % simple shape; avoid huge values
+
+x_k_k_1(5:5 + q + 1 - 1) = channelTaps(:) + ...
+    sigmaInit * ((randn(q + 1,1)+1j*randn(q + 1,1))/sqrt(2)) .* sqrt(pdp_est(:));
 
 % HACK: I zeroed this initial covariance matrix to my analysis about the
 % phase estimation.
-channelCovarianceMatrix = 0 * eye(1 + q); %0.000001 * eye(1 + q);
-channelCovarianceMatrix(1,1) = 0; % 0.001;  
+channelCovarianceMatrix = 1e-8 * eye(q + 1); %0.000001 * eye(1 + q);
 
 % NOTE: I changed from x_k_k to P_k_k_1, because, in fact the
 % initialization uses P[1|0].
@@ -98,9 +125,9 @@ x_LQG_k = [1.005e-4, ...
 u_LQG = L * x_k_k_1(WienerStatesSelection);
 
 %% Simulate Signal
-configuration.addNoise = false;
-[simulatedSignal, ~, LOSPhase, LOSDelay] = gnssReceivedSignal(configuration, simulationSteps + 1);
-
+configuration.addNoise = true;
+[simulatedSignalRaw, ~, LOSPhase, LOSDelay] = gnssReceivedSignal(configuration, simulationSteps + 1);
+simulatedSignal = applyChannelIR(simulatedSignalRaw, channelTaps);
 %% Simulation
 plotMeasures = false;
 correlatorTaps = -q:1:q;
@@ -189,7 +216,8 @@ for k = 1 : simulationSteps
     x_k_k_1(WienerStatesSelection) = real(x_k_k_1(WienerStatesSelection));
     P_k_k_1 = F * P_k_k * F' + Q;
 
-    errorStateRecord(:, k) = x_k_k(1:4);
+    errorStateRecord(:, k) = x_k_k_1(1:4);
+    channelStateRecord(:, k) = x_k_k_1(5:end);
 end
 %% Plots
 
@@ -294,3 +322,20 @@ ylabel("Imaginary Kalman Gain Elements");
 xlabel("Epochs (Simulation Steps)");
 set(gca, "FontSize", fontSize);
 hold off;
+
+% Channel taps — boxplots (Real) with true (scatter)
+figure(Name="Channel Taps (Real) — Boxplot vs True", NumberTitle="off"); hold on;
+boxplot(real(channelStateRecord.'));
+m = min(size(channelStateRecord,1), numel(channelTaps));
+scatter(1:m, real(channelTaps(1:m)), 36, 'b', 'filled', 'DisplayName','True');
+xticklabels(arrayfun(@num2str, 0:size(channelStateRecord,1)-1, 'UniformOutput', false));
+xlabel("Tap index (samples)"); ylabel("Real part");
+set(gca, "FontSize", fontSize); grid on; legend('Location','best'); hold off;
+
+% Channel taps — boxplots (Imag) with true (scatter)
+figure(Name="Channel Taps (Imag) — Boxplot vs True", NumberTitle="off"); hold on;
+boxplot(imag(channelStateRecord.')); 
+scatter(1:m, imag(channelTaps(1:m)), 36, 'b', 'filled', 'DisplayName','True');
+xticklabels(arrayfun(@num2str, 0:size(channelStateRecord,1)-1, 'UniformOutput', false));
+xlabel("Tap index (samples)"); ylabel("Imag part");
+set(gca, "FontSize", fontSize); grid on; legend('Location','best'); hold off;
