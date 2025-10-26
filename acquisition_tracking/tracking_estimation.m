@@ -2,7 +2,7 @@ clearvars; clc; close all;
 
 addpath(genpath(fullfile("..", "..","EKF_channel_estimator")));
 
-load config_no_doppler.mat
+load config_cte_doppler.mat
 rng(26437226);
 
 %% Parameters
@@ -23,7 +23,7 @@ carrierToNoiseRatioLinear = 10^(configuration.carrierToNoiseDensityRatio / 10);
 % Compute the noise variance
 thermalNoiseVarianceSquared = configuration.samplingFrequency / carrierToNoiseRatioLinear;
 
-sigma2Vec = [1e-1 1e-1 1e-3 1e-1 0];
+sigma2Vec = [1e-1 1e-1 1e-2 1e-3 0];
 Q = getStateCovarianceMatrix(...
     sigma2Vec, ...
     epoch, ...
@@ -218,7 +218,7 @@ hold off;
 figure(Name="Delay Estimation", NumberTitle="off");
 hold on;
 plot(epochVector, LQGStateRecord(1,:), 'LineWidth', lineWidth);
-plot(epochVector, LOSDelay(epochVector*4), 'LineWidth', lineWidth);
+plot(epochVector, LOSDelay(epochVector*4096), 'LineWidth', lineWidth);
 legend({"LQG's estimated delay", "True delay"});
 ylabel("Delay estimate");
 xlabel("Epochs (Simulation Steps)");
@@ -236,7 +236,7 @@ hold off;
 figure(Name="Phase Estimation", NumberTitle="off");
 hold on;
 plot(epochVector, LQGStateRecord(2,:), 'LineWidth', lineWidth);
-plot(epochVector, LOSPhase(epochVector*4), 'LineWidth', lineWidth);
+plot(epochVector, LOSPhase(epochVector*4096), 'LineWidth', lineWidth);
 legend({"LQG's estimated phase", "True Phase"});
 ylabel("Phase estimate");
 xlabel("Epochs (Simulation Steps)");
