@@ -2,11 +2,11 @@ clearvars; clc; close all;
 
 addpath(genpath(fullfile("..", "..","EKF_channel_estimator")));
 
-load config_no_doppler.mat
+load config_cte_doppler.mat
 rng(26437226);
 
 %% Parameters
-simulationSteps = 500;
+simulationSteps = 1500;
 q = 4;
 C = 2*q + 1;
 middleSample = q + 1;
@@ -23,7 +23,7 @@ carrierToNoiseRatioLinear = 10^(configuration.carrierToNoiseDensityRatio / 10);
 % Compute the noise variance
 thermalNoiseVarianceSquared = configuration.samplingFrequency / carrierToNoiseRatioLinear;
 
-sigma2Vec = [0, 0, 0, 0, 1e-6, 1e-6];
+sigma2Vec = [1e-2, 1e-1, 1e-1, 1e-1, 1e-1, 1e-1];
 Q = getStateCovarianceMatrix(...
     sigma2Vec, ...
     epoch, ...
@@ -63,26 +63,30 @@ F = blkdiag(F_W, F_H);
 %     0.4 - 1j * 0.4, ...
 %     0.2 - 1j * 0.02, ...
 %     -0.1 + 1j * 0.001];
-channelTaps = [1, zeros(1,q)];
+channelTaps = [1, ...
+    0, ...
+    0, ...
+    0, ...
+    0];
+
 %% Initialization
 % NOTE: I changed from x_k_k to x_k_k_1, because, in fact the
 % initialization uses x[1|0].
 x_k_k_1 = zeros(4 + q + 1, 1);
 
 % EKF channel state init: noisy around truth
-sigmaInit = 1e-4;
+sigmaInit = 1e-3;
 
-x_k_k_1(5:5 + q + 1 - 1) = channelTaps(:) + ...
-    sigmaInit * (randn(q + 1,1)+1j*randn(q + 1,1))/sqrt(2);
+x_k_k_1(5:5 + q) = [channelTaps(:); zeros(q + 1 - length(channelTaps), 1)] + ...
+    sigmaInit * (randn(q + 1,1) + 1j*randn(q + 1,1)) / sqrt(2);
 
 % HACK: I zeroed this initial covariance matrix to my analysis about the
 % phase estimation.
-channelInitCovarianceMatrix = 1e-6 * eye(q + 1); %0.000001 * eye(1 + q);
-channelInitCovarianceMatrix(1,1) = 1e-4;
+channelInitCovarianceMatrix = 1e-8 * eye(q + 1); %0.000001 * eye(1 + q);
 
 % NOTE: I changed from x_k_k to P_k_k_1, because, in fact the
 % initialization uses P[1|0].
-P_k_k_1 = blkdiag(1e0, 0, 0, 0, channelInitCovarianceMatrix); 
+P_k_k_1 = blkdiag(0, 0, 0, 0, channelInitCovarianceMatrix); 
 % P_k_k_1 = blkdiag(0, 0, 0, 0, zeros(1 + q));
 
 phaseError = 0;
@@ -100,7 +104,7 @@ configuration.addNoise = false;
 simulatedSignal = applyChannelIR(simulatedSignalRaw, channelTaps);
 %% Simulation
 plotMeasures = false;
-correlatorTaps = q:-1:-q;
+correlatorTaps = -q:1:q;
 % NOTE: (Rodrigo): Changed the main loop to match algorithm 1 of my report.
 for k = 1 : simulationSteps
     %% Signal 
@@ -138,7 +142,7 @@ for k = 1 : simulationSteps
         end
         
         % Compute Jacobian
-        % Delay term now follows Φ_pp(ετ + (l + m)Ts), matching the updated model.
+        % Delay term now follows Φ_pp(ετ + (l - m)Ts) as in the analytical model.
         delayJacobian = delayJacobianFunctionSimplified( ...
             x_k_k_1(1), ...
             x_k_k_1(5:end), ...
@@ -336,3 +340,4 @@ for r = 1:m
 end
 xlabel("Iteration / time index"); ylabel("Imag part");
 set(gca,"FontSize",fontSize); grid on; legend('Location','best'); hold off;
+
