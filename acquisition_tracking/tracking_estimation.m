@@ -99,7 +99,7 @@ configuration.addNoise = false;
 simulatedSignal = applyChannelIR(simulatedSignalRaw, channelTaps);
 %% Simulation
 plotMeasures = false;
-correlatorTaps = -q:1:q;
+correlatorTaps = q:-1:-q;
 % NOTE: (Rodrigo): Changed the main loop to match algorithm 1 of my report.
 for k = 1 : simulationSteps
     %% Signal 
@@ -137,7 +137,7 @@ for k = 1 : simulationSteps
         end
         
         % Compute Jacobian
-        % Delay term now follows Φ_pp(ετ + (l - m)Ts) as in the analytical model.
+        % Delay term now follows Φ_pp(ετ + (l + m)Ts), matching the updated model.
         delayJacobian = delayJacobianFunctionSimplified( ...
             x_k_k_1(1), ...
             x_k_k_1(5:end), ...
@@ -335,4 +335,3 @@ for r = 1:m
 end
 xlabel("Iteration / time index"); ylabel("Imag part");
 set(gca,"FontSize",fontSize); grid on; legend('Location','best'); hold off;
-

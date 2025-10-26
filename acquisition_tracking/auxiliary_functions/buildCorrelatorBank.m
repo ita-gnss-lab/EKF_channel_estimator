@@ -1,13 +1,14 @@
 function bank = buildCorrelatorBank(configuration, delaySeconds, q)
-% Integer-sample correlator bank: each row m is the prompt code
-% shifted by m samples, m ∈ [-q..q].  (Δτ = Ts)
+% Integer-sample correlator bank: row m corresponds to the prompt code
+% shifted by -m samples, with m ∈ {q, ..., -q}. (Delta tau multiples of Ts)
 
     signal = getCodeReplica(configuration, delaySeconds);
 
+    mValues = q:-1:-q;
     row = 1;
-    for m = -q:q
-        % Shift the prompt by m samples (positive m = shift right)
-        bank(row, :) = circshift(signal, m);
+    for m = mValues
+        % Shift replica by -m so Delta_{l,m} = eps_tau + (l + m)Ts in the model
+        bank(row, :) = circshift(signal, -m);
         row = row + 1;
     end
 end
