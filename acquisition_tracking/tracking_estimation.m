@@ -23,7 +23,7 @@ carrierToNoiseRatioLinear = 10^(configuration.carrierToNoiseDensityRatio / 10);
 % Compute the noise variance
 thermalNoiseVarianceSquared = configuration.samplingFrequency / carrierToNoiseRatioLinear;
 
-sigma2Vec = [1e-4, 1e-1, 1e-2, 1e-3, 1e-6, 0];
+sigma2Vec = [0, 0, 0, 0, 1e-6, 1e-6];
 Q = getStateCovarianceMatrix(...
     sigma2Vec, ...
     epoch, ...
@@ -41,7 +41,7 @@ kalmanGainRecord = zeros(4 + q + 1,C, simulationSteps);
 channelStateRecord = zeros(q + 1, simulationSteps);
 
 %% Cost Functions
-relation = 20;
+relation = 10;
 T_e = relation * diag([beta, 1, 1/epoch, 1/epoch^2]);
 T_u = diag([beta, 1, 1/epoch, 1/epoch^2]);
 
@@ -82,12 +82,12 @@ channelInitCovarianceMatrix(1,1) = 1e-4;
 
 % NOTE: I changed from x_k_k to P_k_k_1, because, in fact the
 % initialization uses P[1|0].
-P_k_k_1 = blkdiag(1e-1, 0, 0, (0.1)^2/12, channelInitCovarianceMatrix); 
+P_k_k_1 = blkdiag(1e0, 0, 0, 0, channelInitCovarianceMatrix); 
 % P_k_k_1 = blkdiag(0, 0, 0, 0, zeros(1 + q));
 
-phaseError = 0.5;
+phaseError = 0;
 DopplerError = 0;
-x_LQG_k = [1.005e-4, ...
+x_LQG_k = [1.000e-4, ...
     configuration.dopplerProfile(1) + phaseError, ...
     2*pi*(configuration.dopplerProfile(2) + DopplerError), ...
     2*pi*configuration.dopplerProfile(3)].';
