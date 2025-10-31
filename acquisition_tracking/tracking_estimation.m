@@ -72,6 +72,7 @@ B_LQG = eye(4);
 %% Full transition matrix
 F = blkdiag(F_W, F_H);
 
+
 %% Initialization
 % NOTE: I changed from x_k_k to x_k_k_1, because, in fact the
 % initialization uses x[1|0].
@@ -87,6 +88,7 @@ channelCovarianceMatrix(1,1) = 0; % 0.001;
 % initialization uses P[1|0].
 P_k_k_1 = blkdiag(1e-1, 0, (50)^2/12, (0.1)^2/12, channelCovarianceMatrix); 
 % P_k_k_1 = blkdiag(1e-1, 0, 0, 0, zeros(1 + q));
+
 
 phaseError = 0.5;
 DopplerError = 25;
@@ -112,13 +114,14 @@ for k = 1 : simulationSteps
     %% LQG Controller
     % Update LQG state 
     x_LQG_k = F_W * x_LQG_k + B_LQG * u_LQG;
+
     LQGStateRecord(:, k) = x_LQG_k(1:4);
 
     % Carrier Wipe-Off
     phi_T = x_LQG_k(2) + x_LQG_k(3) * timeSupport + 0.5 * x_LQG_k(4) * timeSupport.^2;
     d_k = exp(1j * phi_T);
     wipedSignal = receivedSignal .* conj(d_k);
-    
+
     %% Kalman filter
     if k > 1
         % EKF's Update Step
@@ -190,6 +193,7 @@ for k = 1 : simulationSteps
     P_k_k_1 = F * P_k_k * F' + Q;
 
     errorStateRecord(:, k) = x_k_k(1:4);
+
 end
 %% Plots
 
