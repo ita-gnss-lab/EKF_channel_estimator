@@ -13,6 +13,16 @@ end
 shiftedCorrelationsMatrix = getShiftedCorrelations( ...
     delayError, correlatorHalfSpan, configuration, channelOrder);
 
+% epoch = configuration.totalChips / configuration.chippingFrequency;
+% samplesTotal = epoch*configuration.samplingFrequency;
+% n = 0:(samplesTotal-1);
+% time = n/configuration.samplingFrequency;
+
+% dopplerProfile = [x_k_k_1(2), ...
+%     x_k_k_1(3)/(2*pi),...
+%     x_k_k_1(4)/(2*pi)];
+% totalPhaseError = get_LOS_dynamics(time, dopplerProfile, configuration.carrierFrequency);
+
 %% Get Estimated Measurement
 totalPhaseError = x_k_k_1(2);
 estimative = exp(1j * totalPhaseError) * ...
