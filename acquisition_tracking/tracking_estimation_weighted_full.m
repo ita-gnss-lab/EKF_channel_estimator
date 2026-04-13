@@ -30,18 +30,19 @@ Q = getStateCovarianceMatrix(...
     epoch, ...
     beta, ...
     q);
+Q = [Q zeros(q+5, q+1); zeros(q+1, q+5) conj(Q(5:end,5:end))];
 correlatorBank = buildCorrelatorBank(configuration, 0, q);
 
 R  = (thermalNoiseVarianceSquared / samplesTotal.^2) * ...
         (correlatorBank * correlatorBank.');
-R = [R zeros(2*q+1, 1); zeros(1, 2*q+1) 0.001]; 
+R = [R zeros(2*q+1, 1); zeros(1, 2*q+1) 0.0001]; 
 
 %% State History Vectors
 LQGStateRecord = zeros(4, simulationSteps);
 errorStateRecord = zeros(4, simulationSteps);
 channelStateRecord = zeros(q + 1, simulationSteps);
 innovationRecord = zeros(C+1, simulationSteps);
-kalmanGainRecord = zeros(4 + q + 1,C+1, simulationSteps);
+kalmanGainRecord = zeros(4 + 2*(q + 1),C+1, simulationSteps);
 constraintRecord = zeros(1, simulationSteps);
 
 %% Cost Functions
@@ -74,7 +75,7 @@ B_LQG = eye(4);
 [~, L, ~] = idare(F_W, B_LQG, T_e, T_u, [], []);
 
 %% Full transition matrix
-F = blkdiag(F_W, F_H);
+F = blkdiag(F_W, F_H, F_H);
 
 
 %% Initialization
@@ -82,16 +83,16 @@ F = blkdiag(F_W, F_H);
 % initialization uses x[1|0].
 x_k_k_1 = zeros(q + 5, 1);
 x_k_k_1(5) = 1;
-x_k_k_1(6) = 0;
+x_k_k_1 = [x_k_k_1 ; conj(x_k_k_1(5:end))];
 
 % HACK: I zeroed this initial covariance matrix to my analysis about the
 % phase estimation.
-channelCovarianceMatrix = 0.00001 * eye(1 + q); %0.000001 * eye(1 + q);
-channelCovarianceMatrix(1,1) = 0.0001; % 0.001;  
+channelCovarianceMatrix = 0.0001 * eye(1 + q); %0.000001 * eye(1 + q);
+channelCovarianceMatrix(1,1) = 0.001; % 0.001;  
 
 % NOTE: I changed from x_k_k to P_k_k_1, because, in fact the
 % initialization uses P[1|0].
-P_k_k_1 = blkdiag(1e-1, 0, (50)^2/12, (0.1)^2/12, channelCovarianceMatrix); 
+P_k_k_1 = blkdiag(1e-1, 0, (50)^2/12, (0.1)^2/12, channelCovarianceMatrix, conj(channelCovarianceMatrix)); 
 % P_k_k_1 = blkdiag(1e-1, 0, 0, 0, zeros(1 + q));
 
 
@@ -148,7 +149,7 @@ for k = 1 : simulationSteps
             ylabel('Real and Imag parts of z_k and z_k_hat');
             xlabel('Correlator tap');
             legend({'Real $z[k]$', 'Real $\hat{z}[k]$', 'Imag $z[k]$', 'Imag $\hat{z}[k]$'}, 'Interpreter','latex');
-            pause(0.1);
+            pause(0.01);
         end
         
         % Compute Jacobian
@@ -167,9 +168,11 @@ for k = 1 : simulationSteps
         channelWeightsJacobian = exp(1j * x_k_k_1(2)) .* ...
             getShiftedCorrelations(x_k_k_1(1), q, configuration, channelOrder) / samplesTotal;
         % todo - add the jacobian of the constraint
-        LOSParcel = -x_k_k_1(5)*sum(abs(x_k_k_1(6:end)).^2)/(abs(x_k_k_1(5))^2);
-        tapsParcel = (2/((q-1)*abs(x_k_k_1(5))^2))*[LOSParcel; x_k_k_1(6:end)];
-        constraintLine = [0 0 0 0 tapsParcel'];
+        taps = 1/((q-1)*abs(x_k_k_1(5))) * x_k_k_1((6+q+1):end);
+        tapsParcel = [-constraint_value/x_k_k_1(5); taps];
+        conjTaps = 1/((q-1)*abs(x_k_k_1(5+q+1))) * x_k_k_1(6:4+q+1);
+        conjTapsParcel = [-constraint_value/x_k_k_1(5+q+1); conjTaps];
+        constraintLine = [0 0 0 0 tapsParcel' conjTapsParcel'];
         jacobian = [delayJacobian ...
             phaseJacobian ...
             dopplerJacobian ...
@@ -190,7 +193,7 @@ for k = 1 : simulationSteps
         x_k_k(WienerStatesSelection) = real(x_k_k(WienerStatesSelection));
         
         % EKF's covariance matrix update
-        P_k_k = (eye(q + 1 + 4) - K_k*jacobian) * P_k_k_1;
+        P_k_k = (eye(2*(q + 1) + 4) - K_k*jacobian) * P_k_k_1;
         
         % LQG control vector computation
         u_LQG = L * x_k_k(WienerStatesSelection);
@@ -206,7 +209,7 @@ for k = 1 : simulationSteps
     P_k_k_1 = F * P_k_k * F' + Q;
 
     errorStateRecord(:, k) = x_k_k(1:4);
-    channelStateRecord(:, k) = x_k_k(5:end);
+    channelStateRecord(:, k) = x_k_k(5:10);
 
 end
 %% Plots

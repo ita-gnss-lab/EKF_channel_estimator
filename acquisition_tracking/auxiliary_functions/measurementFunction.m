@@ -1,7 +1,7 @@
-function estimative = measurementFunction(x_k_k_1, configuration)
+function estimative = measurementFunction(x_k_k_1, configuration, q)
 %% Generate Autocorrelation Matrix
 delayError = x_k_k_1(1);
-channelWeights = x_k_k_1(5:end);
+channelWeights = x_k_k_1(5:(5+q));
 channelOrder = numel(channelWeights) - 1;
 
 if isfield(configuration, "correlatorHalfSpan")
