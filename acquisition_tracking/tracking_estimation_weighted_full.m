@@ -164,7 +164,7 @@ for k = 1 : simulationSteps
         );
         phaseJacobian = 1j * z_hat_k_aux;
         dopplerJacobian = zeros(2*q + 1, 2);
-        channelOrder = numel(x_k_k_1(5:end)) - 1;
+        channelOrder = numel(x_k_k_1(5:(4+q+1))) - 1;
         channelWeightsJacobian = exp(1j * x_k_k_1(2)) .* ...
             getShiftedCorrelations(x_k_k_1(1), q, configuration, channelOrder) / samplesTotal;
         % todo - add the jacobian of the constraint
@@ -173,10 +173,12 @@ for k = 1 : simulationSteps
         conjTaps = 1/((q-1)*abs(x_k_k_1(5+q+1))) * x_k_k_1(6:4+q+1);
         conjTapsParcel = [-constraint_value/x_k_k_1(5+q+1); conjTaps];
         constraintLine = [0 0 0 0 tapsParcel' conjTapsParcel'];
+        conjTapsPad = zeros(5+q+1, q+1);
         jacobian = [delayJacobian ...
             phaseJacobian ...
             dopplerJacobian ...
-            channelWeightsJacobian;
+            channelWeightsJacobian ...
+            conjTapsPad;
             constraintLine];
         
         % Compute Kalman Gain
