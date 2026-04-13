@@ -148,7 +148,7 @@ for k = 1 : simulationSteps
             ylabel('Real and Imag parts of z_k and z_k_hat');
             xlabel('Correlator tap');
             legend({'Real $z[k]$', 'Real $\hat{z}[k]$', 'Imag $z[k]$', 'Imag $\hat{z}[k]$'}, 'Interpreter','latex');
-            pause(0.1);
+            pause(0.01);
         end
         
         % Compute Jacobian
@@ -188,6 +188,7 @@ for k = 1 : simulationSteps
         % EKF's state update
         x_k_k = x_k_k_1 + K_k * innovation;
         x_k_k(WienerStatesSelection) = real(x_k_k(WienerStatesSelection));
+        
         
         % EKF's covariance matrix update
         P_k_k = (eye(q + 1 + 4) - K_k*jacobian) * P_k_k_1;
@@ -233,14 +234,14 @@ ylabel("Innovation sequence of the middle tap");
 xlabel("Epochs (Simulation Steps)");
 hold off;
 
-% figure(Name="Delay Estimation", NumberTitle="off");
-% hold on;
-% plot(epochVector, LQGStateRecord(1,:), 'LineWidth', lineWidth);
-% plot(epochVector, LOSDelay(epochVector*4096), 'LineWidth', lineWidth);
-% legend({"LQG's estimated delay", "True delay"});
-% ylabel("Delay estimate");
-% xlabel("Epochs (Simulation Steps)");
-% hold off;
+figure(Name="Delay Estimation", NumberTitle="off");
+hold on;
+plot(epochVector, LQGStateRecord(1,:), 'LineWidth', lineWidth);
+plot(epochVector, LOSDelay(epochVector*4096), 'LineWidth', lineWidth);
+legend({"LQG's estimated delay", "True delay"});
+ylabel("Delay estimate");
+xlabel("Epochs (Simulation Steps)");
+hold off;
 
 figure(Name="Delay Error State", NumberTitle="off");
 hold on;
@@ -251,14 +252,14 @@ ylabel("Delay error estimate");
 xlabel("Epochs (Simulation Steps)");
 hold off;
 
-% figure(Name="Phase Estimation", NumberTitle="off");
-% hold on;
-% plot(epochVector, LQGStateRecord(2,:), 'LineWidth', lineWidth);
-% plot(epochVector, LOSPhase(epochVector*4096), 'LineWidth', lineWidth);
-% legend({"LQG's estimated phase", "True Phase"});
-% ylabel("Phase estimate");
-% xlabel("Epochs (Simulation Steps)");
-% hold off;
+figure(Name="Phase Estimation", NumberTitle="off");
+hold on;
+plot(epochVector, LQGStateRecord(2,:), 'LineWidth', lineWidth);
+plot(epochVector, LOSPhase(epochVector*4096), 'LineWidth', lineWidth);
+legend({"LQG's estimated phase", "True Phase"});
+ylabel("Phase estimate");
+xlabel("Epochs (Simulation Steps)");
+hold off;
 
 figure(Name="Phase Error State", NumberTitle="off");
 hold on;
