@@ -1,5 +1,5 @@
 function [hTau, dphiLm, deltaLm] = delayJacobianFunctionSimplified( ...
-        epsTauHat, hHatL, Ts, q, Tc, scale)
+        epsTauHat, hHatL, Ts, q, Tc, scale, f)
 % delayJacobianFunctionSimplified
 % Computes the delay Jacobian vector hTau (size (2q+1)x1) whose m-th entry is
 %   hTau(m) = scale * sum_{l=0}^L hHatL(l+1) * dPhi_pp(deltaLm(l+1,m))
@@ -41,6 +41,10 @@ function [hTau, dphiLm, deltaLm] = delayJacobianFunctionSimplified( ...
     interior = (abs(deltaLm) < Tc) & (deltaLm ~= 0);
     dphiLm(interior) = -(1./Tc) .* sign(deltaLm(interior));
     % elsewhere remains 0
+
+    tapOrder = 0:q;
+    tapPhase = (-2*pi*f*Ts)*tapOrder;
+    hHatL = hHatL .* exp(1j * tapPhase');
 
     % Per-(l,m) contributions and sum over l for each m
     contribLm = dphiLm .* hHatL(:);   % (L+1)x(2q+1)

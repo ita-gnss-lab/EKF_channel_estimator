@@ -2,12 +2,12 @@ clearvars; clc; close all;
 
 addpath(genpath(fullfile("..", "..","EKF_channel_estimator")));
 
-load config_cte_doppler.mat
+load config_no_doppler.mat
 rng(26437226); 
 
 %% Parameters
 simulationSteps = 500;
-constraint_noise = 10.^[-2.63 -3.44 -4 -4.28 -4.49 -4.63 -4.85 -5.2 -5.37 -5.88];
+constraint_noise = 1e-3;%10.^[-2.63 -3.44 -4 -4.28 -4.49 -4.63 -4.85 -5.2 -5.37 -5.88];
 q = 5;
 C = 2*q + 1;
 middleSample = q + 1;
@@ -24,7 +24,7 @@ carrierToNoiseRatioLinear = 10^(configuration.carrierToNoiseDensityRatio / 10);
 % Compute the noise variance
 thermalNoiseVarianceSquared = configuration.samplingFrequency / carrierToNoiseRatioLinear;
 
-sigma2Vec = [1e-1 1e-1 1e-2 1e-3 0];
+sigma2Vec = [1e-1 1e-1 1e-2 1e-3 1e-4];
 Q = getStateCovarianceMatrix(...
     sigma2Vec, ...
     epoch, ...
@@ -34,7 +34,7 @@ correlatorBank = buildCorrelatorBank(configuration, 0, q);
 
 R  = (thermalNoiseVarianceSquared / samplesTotal.^2) * ...
         (correlatorBank * correlatorBank.');
-R = [R zeros(2*q+1, 1); zeros(1, 2*q+1) 0.001]; 
+R = [R zeros(2*q+1, 1); zeros(1, 2*q+1) constraint_noise]; 
 
 %% State History Vectors
 LQGStateRecord = zeros(4, simulationSteps);
@@ -110,6 +110,7 @@ configuration.addNoise = false;
 
 %% Simulation
 plotMeasures = true;
+plotChannels = false;
 correlatorTaps = -q:1:q;
 % NOTE: (Rodrigo): Changed the main loop to match algorithm 1 of my report.
 for k = 1 : simulationSteps
@@ -149,6 +150,17 @@ for k = 1 : simulationSteps
             xlabel('Correlator tap');
             legend({'Real $z[k]$', 'Real $\hat{z}[k]$', 'Imag $z[k]$', 'Imag $\hat{z}[k]$'}, 'Interpreter','latex');
             pause(0.01);
+        elseif plotChannels
+            compass(x_k_k_1(5));
+            hold on
+            compass(x_k_k_1(6));
+            compass(x_k_k_1(5) + x_k_k_1(6));
+            plot(1, 0, 'Pentagram');
+            hold off
+            ylabel('');
+            xlabel('Polar drawing');
+            legend({'Main tap', 'second tap', 'sum','real unit'});
+            pause(0.01);
         end
         
         % Compute Jacobian
@@ -159,7 +171,8 @@ for k = 1 : simulationSteps
             1 / configuration.samplingFrequency, ...
             q, ...
             1 / configuration.chippingFrequency, ...
-            exp(1j * x_k_k_1(2))  ...
+            exp(1j * x_k_k_1(2)),  ...
+            configuration.carrierFrequency...
         );
         phaseJacobian = 1j * z_hat_k_aux;
         dopplerJacobian = zeros(2*q + 1, 2);
@@ -316,13 +329,22 @@ hold off;
 
 figure(Name="Channel Weights Over Time", NumberTitle="off");
 hold on;
-for i = 1:(q+1)
+for i = 1:3
     plot(abs(channelStateRecord(i, :)), 'LineWidth', lineWidth);
 end
 yyaxis right
 plot(constraintRecord, 'LineWidth', lineWidth);
-ylabel("Channel Wheights");
+ylabel("Constraint");
 xlabel("Epochs (Simulation Steps)");
+hold off;
+
+figure(Name="Real component and imaginary component first two taps", NumberTitle="off");
+hold on;
+plot(real(channelStateRecord(1, :)), 'LineWidth', lineWidth);
+plot(imag(channelStateRecord(1, :)), 'LineWidth', lineWidth);
+yyaxis right
+plot(real(channelStateRecord(2, :)), 'LineWidth', lineWidth);
+plot(imag(channelStateRecord(2, :)), 'LineWidth', lineWidth);
 hold off;
 
 VariationRecord = zeros(10, simulationSteps);
