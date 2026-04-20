@@ -7,7 +7,7 @@ rng(26437226);
 
 %% Parameters
 simulationSteps = 500;
-constraint_noise = 1e-3;%10.^[-2.63 -3.44 -4 -4.28 -4.49 -4.63 -4.85 -5.2 -5.37 -5.88];
+constraint_noise = 10^(-3.44);%10.^[-2.63 -3.44 -4 -4.28 -4.49 -4.63 -4.85 -5.2 -5.37 -5.88];
 q = 5;
 C = 2*q + 1;
 middleSample = q + 1;
@@ -24,7 +24,7 @@ carrierToNoiseRatioLinear = 10^(configuration.carrierToNoiseDensityRatio / 10);
 % Compute the noise variance
 thermalNoiseVarianceSquared = configuration.samplingFrequency / carrierToNoiseRatioLinear;
 % [1e-1 1e-1 1e-2 1e-3 1e-4]
-sigma2Vec = [0 0 0 0 1e-3];
+sigma2Vec = [1e-1 0 0 0 1e-4];
 Q = getStateCovarianceMatrix_acausal(...
     sigma2Vec, ...
     epoch, ...
@@ -87,7 +87,7 @@ x_k_k_1(main_tap) = 0.95;
 other_taps = true(size(x_k_k_1));
 other_taps(1:4) = false;
 other_taps(main_tap) = false;
-x_k_k_1(other_taps) = 0.05;
+x_k_k_1(other_taps) = 0.1;
 % HACK: I zeroed this initial covariance matrix to my analysis about the
 % phase estimation.
 channelCovarianceMatrix = 0.00001 * eye(2*q + 1); %0.000001 * eye(1 + q);
@@ -95,13 +95,13 @@ channelCovarianceMatrix(q + 1, q + 1) = 0.0001; % 0.001;
 
 % NOTE: I changed from x_k_k to P_k_k_1, because, in fact the
 % initialization uses P[1|0].  1e-1, 0, (50)^2/12, (0.1)^2/12,
-P_k_k_1 = blkdiag(0, 0, 0, 0, channelCovarianceMatrix); 
+P_k_k_1 = blkdiag(1e-1, 0, 0, 0, channelCovarianceMatrix); 
 % P_k_k_1 = blkdiag(1e-1, 0, 0, 0, zeros(1 + q));
 
 
 phaseError = 0;
 DopplerError = 0;
-x_LQG_k = [1.000e-4, ...
+x_LQG_k = [1.005e-4, ...
     configuration.dopplerProfile(1) + phaseError, ...
     2*pi*(configuration.dopplerProfile(2) + DopplerError), ...
     2*pi*configuration.dopplerProfile(3)].';
@@ -241,14 +241,14 @@ ylabel("Innovation sequence of the middle tap");
 xlabel("Epochs (Simulation Steps)");
 hold off;
 
-% figure(Name="Delay Estimation", NumberTitle="off");
-% hold on;
-% plot(epochVector, LQGStateRecord(1,:), 'LineWidth', lineWidth);
-% plot(epochVector, LOSDelay(epochVector*4096), 'LineWidth', lineWidth);
-% legend({"LQG's estimated delay", "True delay"});
-% ylabel("Delay estimate");
-% xlabel("Epochs (Simulation Steps)");
-% hold off;
+figure(Name="Delay Estimation", NumberTitle="off");
+hold on;
+plot(epochVector, LQGStateRecord(1,:), 'LineWidth', lineWidth);
+%plot(epochVector, LOSDelay(epochVector*4096), 'LineWidth', lineWidth);
+legend({"LQG's estimated delay", "True delay"});
+ylabel("Delay estimate");
+xlabel("Epochs (Simulation Steps)");
+hold off;
 
 figure(Name="Delay Error State", NumberTitle="off");
 hold on;
@@ -259,14 +259,14 @@ ylabel("Delay error estimate");
 xlabel("Epochs (Simulation Steps)");
 hold off;
 
-% figure(Name="Phase Estimation", NumberTitle="off");
-% hold on;
-% plot(epochVector, LQGStateRecord(2,:), 'LineWidth', lineWidth);
-% plot(epochVector, LOSPhase(epochVector*4096), 'LineWidth', lineWidth);
-% legend({"LQG's estimated phase", "True Phase"});
-% ylabel("Phase estimate");
-% xlabel("Epochs (Simulation Steps)");
-% hold off;
+figure(Name="Phase Estimation", NumberTitle="off");
+hold on;
+plot(epochVector, LQGStateRecord(2,:), 'LineWidth', lineWidth);
+%plot(epochVector, LOSPhase(epochVector*4096), 'LineWidth', lineWidth);
+legend({"LQG's estimated phase", "True Phase"});
+ylabel("Phase estimate");
+xlabel("Epochs (Simulation Steps)");
+hold off;
 
 figure(Name="Phase Error State", NumberTitle="off");
 hold on;
