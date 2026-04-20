@@ -23,8 +23,8 @@ WienerStatesSelection = 1:4;
 carrierToNoiseRatioLinear = 10^(configuration.carrierToNoiseDensityRatio / 10);
 % Compute the noise variance
 thermalNoiseVarianceSquared = configuration.samplingFrequency / carrierToNoiseRatioLinear;
-
-sigma2Vec = [1e-1 1e-1 1e-2 1e-3 1e-4];
+% [1e-1 1e-1 1e-2 1e-3 1e-4]
+sigma2Vec = [0 0 0 0 1e-3];
 Q = getStateCovarianceMatrix(...
     sigma2Vec, ...
     epoch, ...
@@ -90,8 +90,8 @@ channelCovarianceMatrix = 0.00001 * eye(1 + q); %0.000001 * eye(1 + q);
 channelCovarianceMatrix(1,1) = 0.0001; % 0.001;  
 
 % NOTE: I changed from x_k_k to P_k_k_1, because, in fact the
-% initialization uses P[1|0].
-P_k_k_1 = blkdiag(1e-1, 0, (50)^2/12, (0.1)^2/12, channelCovarianceMatrix); 
+% initialization uses P[1|0].  1e-1, 0, (50)^2/12, (0.1)^2/12,
+P_k_k_1 = blkdiag(0, 0, 0, 0, channelCovarianceMatrix); 
 % P_k_k_1 = blkdiag(1e-1, 0, 0, 0, zeros(1 + q));
 
 
@@ -153,7 +153,8 @@ for k = 1 : simulationSteps
         elseif plotChannels
             compass(x_k_k_1(5));
             hold on
-            compass(x_k_k_1(6));
+            phase = -(2*pi*configuration.carrierFrequency)/configuration.samplingFrequency;
+            compass(x_k_k_1(6)*exp(1j*phase));
             compass(x_k_k_1(5) + x_k_k_1(6));
             plot(1, 0, 'Pentagram');
             hold off
@@ -201,8 +202,7 @@ for k = 1 : simulationSteps
         % EKF's state update
         x_k_k = x_k_k_1 + K_k * innovation;
         x_k_k(WienerStatesSelection) = real(x_k_k(WienerStatesSelection));
-        
-        
+ 
         % EKF's covariance matrix update
         P_k_k = (eye(q + 1 + 4) - K_k*jacobian) * P_k_k_1;
         
@@ -231,7 +231,7 @@ fontSize = 13;
 epochVector = 1:simulationSteps;
 
 %Observe the STD of the innovation sequence time series\
-innovationStdRecord = std(innovationRecord,1,1);
+innovationStdRecord = std(innovationRecord(1:(end-1),:),1,1);
 figure(Name="STD of the innovations", NumberTitle="off");
 plot(epochVector, innovationStdRecord, 'LineWidth', lineWidth);
 ylabel("Standard deviation of the innovations");
@@ -247,14 +247,14 @@ ylabel("Innovation sequence of the middle tap");
 xlabel("Epochs (Simulation Steps)");
 hold off;
 
-figure(Name="Delay Estimation", NumberTitle="off");
-hold on;
-plot(epochVector, LQGStateRecord(1,:), 'LineWidth', lineWidth);
-plot(epochVector, LOSDelay(epochVector*4096), 'LineWidth', lineWidth);
-legend({"LQG's estimated delay", "True delay"});
-ylabel("Delay estimate");
-xlabel("Epochs (Simulation Steps)");
-hold off;
+% figure(Name="Delay Estimation", NumberTitle="off");
+% hold on;
+% plot(epochVector, LQGStateRecord(1,:), 'LineWidth', lineWidth);
+% plot(epochVector, LOSDelay(epochVector*4096), 'LineWidth', lineWidth);
+% legend({"LQG's estimated delay", "True delay"});
+% ylabel("Delay estimate");
+% xlabel("Epochs (Simulation Steps)");
+% hold off;
 
 figure(Name="Delay Error State", NumberTitle="off");
 hold on;
@@ -265,14 +265,14 @@ ylabel("Delay error estimate");
 xlabel("Epochs (Simulation Steps)");
 hold off;
 
-figure(Name="Phase Estimation", NumberTitle="off");
-hold on;
-plot(epochVector, LQGStateRecord(2,:), 'LineWidth', lineWidth);
-plot(epochVector, LOSPhase(epochVector*4096), 'LineWidth', lineWidth);
-legend({"LQG's estimated phase", "True Phase"});
-ylabel("Phase estimate");
-xlabel("Epochs (Simulation Steps)");
-hold off;
+% figure(Name="Phase Estimation", NumberTitle="off");
+% hold on;
+% plot(epochVector, LQGStateRecord(2,:), 'LineWidth', lineWidth);
+% plot(epochVector, LOSPhase(epochVector*4096), 'LineWidth', lineWidth);
+% legend({"LQG's estimated phase", "True Phase"});
+% ylabel("Phase estimate");
+% xlabel("Epochs (Simulation Steps)");
+% hold off;
 
 figure(Name="Phase Error State", NumberTitle="off");
 hold on;

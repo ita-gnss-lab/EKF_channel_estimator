@@ -2,12 +2,12 @@ clearvars; clc; close all;
 
 addpath(genpath(fullfile("..", "..","EKF_channel_estimator")));
 
-load config_cte_doppler.mat
+load config_no_doppler.mat
 rng(26437226); 
 
 %% Parameters
-simulationSteps = 1500;
-constraint_noise = 1e-5; %10.^[-2.63 -3.44 -4 -4.28 -4.49 -4.63 -4.85 -5.2 -5.37 -5.88];
+simulationSteps = 500;
+constraint_noise = 1e-3;%10.^[-2.63 -3.44 -4 -4.28 -4.49 -4.63 -4.85 -5.2 -5.37 -5.88];
 q = 5;
 C = 2*q + 1;
 middleSample = q + 1;
@@ -23,26 +23,25 @@ WienerStatesSelection = 1:4;
 carrierToNoiseRatioLinear = 10^(configuration.carrierToNoiseDensityRatio / 10);
 % Compute the noise variance
 thermalNoiseVarianceSquared = configuration.samplingFrequency / carrierToNoiseRatioLinear;
-
-sigma2Vec = [1e-1 1e-1 1e-2 1e-3 1e-6];
-Q = getStateCovarianceMatrix(...
+% [1e-1 1e-1 1e-2 1e-3 1e-4]
+sigma2Vec = [0 0 0 0 1e-3];
+Q = getStateCovarianceMatrix_acausal(...
     sigma2Vec, ...
     epoch, ...
     beta, ...
     q);
-Q = [Q zeros(q+5, q+1); zeros(q+1, q+5) conj(Q(5:end,5:end))];
 correlatorBank = buildCorrelatorBank(configuration, 0, q);
 
 R  = (thermalNoiseVarianceSquared / samplesTotal.^2) * ...
         (correlatorBank * correlatorBank.');
-R = [R zeros(2*q+1, 1); zeros(1, 2*q+1) 1e-2]; 
+R = [R zeros(2*q+1, 1); zeros(1, 2*q+1) constraint_noise]; 
 
 %% State History Vectors
 LQGStateRecord = zeros(4, simulationSteps);
 errorStateRecord = zeros(4, simulationSteps);
-channelStateRecord = zeros(q + 1, simulationSteps);
+channelStateRecord = zeros(2*q + 1, simulationSteps);
 innovationRecord = zeros(C+1, simulationSteps);
-kalmanGainRecord = zeros(4 + 2*(q + 1),C+1, simulationSteps);
+kalmanGainRecord = zeros(4 + 2*q + 1,C+1, simulationSteps);
 constraintRecord = zeros(1, simulationSteps);
 
 %% Cost Functions
@@ -66,7 +65,7 @@ T_e = relation * diag([beta, 1, 1/epoch, 1/epoch^2]);
 T_u = diag([beta, 1, 1/epoch, 1/epoch^2]);
 
 %% Transition Matrices
-[F_W, F_H] = getModelTransitionMatrix(epoch, q, beta);
+[F_W, F_H] = getModelTransitionMatrix_acausal(epoch, q, beta);
 
 %% Coupling Matrix for Control Signal
 B_LQG = eye(4);
@@ -75,24 +74,28 @@ B_LQG = eye(4);
 [~, L, ~] = idare(F_W, B_LQG, T_e, T_u, [], []);
 
 %% Full transition matrix
-F = blkdiag(F_W, F_H, F_H);
+F = blkdiag(F_W, F_H);
 
 
 %% Initialization
 % NOTE: I changed from x_k_k to x_k_k_1, because, in fact the
 % initialization uses x[1|0].
-x_k_k_1 = zeros(q + 5, 1);
-x_k_k_1(5) = 1;
-x_k_k_1 = [x_k_k_1 ; conj(x_k_k_1(5:end))];
-
+x_k_k_1 = zeros(4 + (2*q+1), 1);
+main_tap = false(size(x_k_k_1));
+main_tap(4 + q + 1) = true;
+x_k_k_1(main_tap) = 0.95;
+other_taps = true(size(x_k_k_1));
+other_taps(1:4) = false;
+other_taps(main_tap) = false;
+x_k_k_1(other_taps) = 0.05;
 % HACK: I zeroed this initial covariance matrix to my analysis about the
 % phase estimation.
-channelCovarianceMatrix = 1e-6 * eye(1 + q); %0.000001 * eye(1 + q);
-channelCovarianceMatrix(1,1) = 1e-5; % 0.001;  
+channelCovarianceMatrix = 0.00001 * eye(2*q + 1); %0.000001 * eye(1 + q);
+channelCovarianceMatrix(q + 1, q + 1) = 0.0001; % 0.001;  
 
 % NOTE: I changed from x_k_k to P_k_k_1, because, in fact the
-% initialization uses P[1|0].
-P_k_k_1 = blkdiag(1e-1, 0, (50)^2/12, (0.1)^2/12, channelCovarianceMatrix, conj(channelCovarianceMatrix)); 
+% initialization uses P[1|0].  1e-1, 0, (50)^2/12, (0.1)^2/12,
+P_k_k_1 = blkdiag(0, 0, 0, 0, channelCovarianceMatrix); 
 % P_k_k_1 = blkdiag(1e-1, 0, 0, 0, zeros(1 + q));
 
 
@@ -110,13 +113,14 @@ configuration.addNoise = false;
 [simulatedSignal, ~, LOSPhase, LOSDelay] = gnssReceivedSignal(configuration, simulationSteps + 1);
 
 %% Simulation
-plotMeasures = false;
+plotMeasures = true;
 correlatorTaps = -q:1:q;
 % NOTE: (Rodrigo): Changed the main loop to match algorithm 1 of my report.
 for k = 1 : simulationSteps
     %% Signal 
     receivedSignal = simulatedSignal(((k - 1) * samplesTotal + 1: k * samplesTotal));
-    
+    % NOTE (Thiago): corrects the samples that are not +-1
+    receivedSignal = round(receivedSignal);
     %% LQG Controller
     % Update LQG state 
     x_LQG_k = F_W * x_LQG_k + B_LQG * u_LQG;
@@ -132,9 +136,11 @@ for k = 1 : simulationSteps
     if k > 1
         % EKF's Update Step
         correlatorBank = buildCorrelatorBank(configuration, x_LQG_k(1), q);
+        % NOTE (Thiago): corrects the samples that are not +-1
+        correlatorBank = round(correlatorBank);
         z_k = [correlatorBank * wipedSignal / samplesTotal; 0];
-        constraint_value = sum(abs(x_k_k_1(6:4+q+1)).^2)/((q-1)*abs(x_k_k_1(5))^2);
-        z_hat_k_aux = measurementFunction(x_k_k_1, configuration, q) / samplesTotal;
+        constraint_value = sum(abs(x_k_k_1(other_taps)).^2)/((q-1)*abs(x_k_k_1(main_tap))^2);
+        z_hat_k_aux = measurementFunction_acausal(x_k_k_1, configuration, q) / samplesTotal;
         z_hat_k = [z_hat_k_aux; constraint_value];
         constraintRecord(:, k) = constraint_value;
         
@@ -154,31 +160,28 @@ for k = 1 : simulationSteps
         
         % Compute Jacobian
         % Delay term now follows Φ_pp(ετ + (l - m)Ts) as in the analytical model.
-        delayJacobian = delayJacobianFunctionSimplified( ...
+        delayJacobian = delayJacobianFunctionSimplified_acausal( ...
             x_k_k_1(1), ...
-            x_k_k_1(5:4+q+1), ...
+            x_k_k_1(5:end), ...
             1 / configuration.samplingFrequency, ...
             q, ...
             1 / configuration.chippingFrequency, ...
-            exp(1j * x_k_k_1(2))  ...
+            exp(1j * x_k_k_1(2)),  ...
+            configuration.carrierFrequency...
         );
         phaseJacobian = 1j * z_hat_k_aux;
         dopplerJacobian = zeros(2*q + 1, 2);
-        channelOrder = numel(x_k_k_1(5:(4+q+1))) - 1;
+        channelOrder = (numel(x_k_k_1(5:end)) - 1)/2;
         channelWeightsJacobian = exp(1j * x_k_k_1(2)) .* ...
-            getShiftedCorrelations(x_k_k_1(1), q, configuration, channelOrder) / samplesTotal;
+            getShiftedCorrelations_acausal(x_k_k_1(1), q, configuration, channelOrder) / samplesTotal;
         % todo - add the jacobian of the constraint
-        taps = 1/((q-1)*abs(x_k_k_1(5))) * x_k_k_1((6+q+1):end);
-        tapsParcel = [-constraint_value/x_k_k_1(5); taps];
-        conjTaps = 1/((q-1)*abs(x_k_k_1(5+q+1))) * x_k_k_1(6:4+q+1);
-        conjTapsParcel = [- constraint_value/x_k_k_1(5+q+1); conjTaps];
-        constraintLine = [0 0 0 0 tapsParcel' conjTapsParcel'];
-        conjTapsPad = zeros(5+q+1, q+1);
+        LOSParcel = -x_k_k_1(main_tap)*sum(abs(x_k_k_1(other_taps)).^2)/(abs(x_k_k_1(main_tap))^2);
+        tapsParcel = (2/((q-1)*abs(x_k_k_1(main_tap))^2))*[x_k_k_1(4+1:4+q);LOSParcel;x_k_k_1(4+q+2:end)];
+        constraintLine = [0 0 0 0 tapsParcel'];
         jacobian = [delayJacobian ...
             phaseJacobian ...
             dopplerJacobian ...
-            channelWeightsJacobian ...
-            conjTapsPad;
+            channelWeightsJacobian;
             constraintLine];
         
         % Compute Kalman Gain
@@ -193,9 +196,9 @@ for k = 1 : simulationSteps
         % EKF's state update
         x_k_k = x_k_k_1 + K_k * innovation;
         x_k_k(WienerStatesSelection) = real(x_k_k(WienerStatesSelection));
-        
+ 
         % EKF's covariance matrix update
-        P_k_k = (eye(2*(q + 1) + 4) - K_k*jacobian) * P_k_k_1;
+        P_k_k = (eye(2*q + 1 + 4) - K_k*jacobian) * P_k_k_1;
         
         % LQG control vector computation
         u_LQG = L * x_k_k(WienerStatesSelection);
@@ -211,7 +214,7 @@ for k = 1 : simulationSteps
     P_k_k_1 = F * P_k_k * F' + Q;
 
     errorStateRecord(:, k) = x_k_k(1:4);
-    channelStateRecord(:, k) = x_k_k(5:10);
+    channelStateRecord(:, k) = x_k_k(5:end);
 
 end
 %% Plots
@@ -222,7 +225,7 @@ fontSize = 13;
 epochVector = 1:simulationSteps;
 
 %Observe the STD of the innovation sequence time series\
-innovationStdRecord = std(innovationRecord,1,1);
+innovationStdRecord = std(innovationRecord(1:(end-1),:),1,1);
 figure(Name="STD of the innovations", NumberTitle="off");
 plot(epochVector, innovationStdRecord, 'LineWidth', lineWidth);
 ylabel("Standard deviation of the innovations");
@@ -320,13 +323,27 @@ hold off;
 
 figure(Name="Channel Weights Over Time", NumberTitle="off");
 hold on;
-for i = 1:(q+1)
+for i = 1:3
     plot(abs(channelStateRecord(i, :)), 'LineWidth', lineWidth);
 end
 yyaxis right
 plot(constraintRecord, 'LineWidth', lineWidth);
-ylabel("Channel Wheights");
+ylabel("Constraint");
 xlabel("Epochs (Simulation Steps)");
+hold off;
+
+figure(Name="secondary taps", NumberTitle="off");
+hold on;
+for i = -q:q
+    if i ~= 0
+        plot(abs(channelStateRecord(i+q+1, :)), 'LineWidth', lineWidth);
+    end
+end
+hold off;
+
+figure(Name="main tap", NumberTitle="off");
+hold on; 
+plot(real(channelStateRecord(q+1, :)), 'LineWidth', lineWidth);
 hold off;
 
 VariationRecord = zeros(10, simulationSteps);
