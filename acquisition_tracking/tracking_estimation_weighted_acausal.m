@@ -2,12 +2,12 @@ clearvars; clc; close all;
 
 addpath(genpath(fullfile("..", "..","EKF_channel_estimator")));
 
-load config_no_doppler.mat
+load config_cte_doppler.mat
 rng(26437226); 
 
 %% Parameters
-simulationSteps = 500;
-constraint_noise = 10^(-3.44);%10.^[-2.63 -3.44 -4 -4.28 -4.49 -4.63 -4.85 -5.2 -5.37 -5.88];
+simulationSteps = 10000;
+constraint_noise = 10^(-4.44);%10.^[-2.63 -3.44 -4 -4.28 -4.49 -4.63 -4.85 -5.2 -5.37 -5.88];
 q = 5;
 C = 2*q + 1;
 middleSample = q + 1;
@@ -15,8 +15,10 @@ epoch = configuration.totalChips / configuration.chippingFrequency;
 configuration.correlatorHalfSpan = q;
 samplesTotal = epoch*configuration.samplingFrequency;
 timeSupport = (0:(samplesTotal - 1)).' * (1/configuration.samplingFrequency);
+% NOTE: Verify if the signal should be + or - 
 beta = -1 / (2 * pi * configuration.carrierFrequency);
 WienerStatesSelection = 1:4;
+%simulationTaps = [1 0.1 0 0 0 0];
 
 %% Covariances 
 % Convert CN0 from dB-Hz to linear scale
@@ -24,7 +26,7 @@ carrierToNoiseRatioLinear = 10^(configuration.carrierToNoiseDensityRatio / 10);
 % Compute the noise variance
 thermalNoiseVarianceSquared = configuration.samplingFrequency / carrierToNoiseRatioLinear;
 % [1e-1 1e-1 1e-2 1e-3 1e-4]
-sigma2Vec = [1e-1 0 0 0 1e-4];
+sigma2Vec = [1e-1 1e-1 1e-2 1e-3 1e-10];
 Q = getStateCovarianceMatrix_acausal(...
     sigma2Vec, ...
     epoch, ...
@@ -83,11 +85,12 @@ F = blkdiag(F_W, F_H);
 x_k_k_1 = zeros(4 + (2*q+1), 1);
 main_tap = false(size(x_k_k_1));
 main_tap(4 + q + 1) = true;
-x_k_k_1(main_tap) = 0.95;
+x_k_k_1(main_tap) = 1;
 other_taps = true(size(x_k_k_1));
 other_taps(1:4) = false;
 other_taps(main_tap) = false;
-x_k_k_1(other_taps) = 0.1;
+x_k_k_1(other_taps) = 0;
+
 % HACK: I zeroed this initial covariance matrix to my analysis about the
 % phase estimation.
 channelCovarianceMatrix = 0.00001 * eye(2*q + 1); %0.000001 * eye(1 + q);
@@ -95,12 +98,12 @@ channelCovarianceMatrix(q + 1, q + 1) = 0.0001; % 0.001;
 
 % NOTE: I changed from x_k_k to P_k_k_1, because, in fact the
 % initialization uses P[1|0].  1e-1, 0, (50)^2/12, (0.1)^2/12,
-P_k_k_1 = blkdiag(1e-1, 0, 0, 0, channelCovarianceMatrix); 
+P_k_k_1 = blkdiag(1e-1, 0, (50)^2/12, (0.1)^2/12, channelCovarianceMatrix); 
 % P_k_k_1 = blkdiag(1e-1, 0, 0, 0, zeros(1 + q));
 
 
 phaseError = 0;
-DopplerError = 0;
+DopplerError = 50;
 x_LQG_k = [1.005e-4, ...
     configuration.dopplerProfile(1) + phaseError, ...
     2*pi*(configuration.dopplerProfile(2) + DopplerError), ...
@@ -111,9 +114,9 @@ u_LQG = L * x_k_k_1(WienerStatesSelection);
 %% Simulate Signal
 configuration.addNoise = false;
 [simulatedSignal, ~, LOSPhase, LOSDelay] = gnssReceivedSignal(configuration, simulationSteps + 1);
-
+%simulatedSignal = applyChannelIR(simulatedSignal, simulationTaps);
 %% Simulation
-plotMeasures = true;
+plotMeasures = false;
 correlatorTaps = -q:1:q;
 % NOTE: (Rodrigo): Changed the main loop to match algorithm 1 of my report.
 for k = 1 : simulationSteps
@@ -279,8 +282,8 @@ hold off;
 
 figure(Name="Doppler Estimation", NumberTitle="off");
 hold on;
-plot(epochVector, LQGStateRecord(3,:), 'LineWidth', lineWidth);
-plot(epochVector, 2*pi*configuration.dopplerProfile(2) * ones(1,length(epochVector)), 'LineWidth', lineWidth);
+plot(epochVector, LQGStateRecord(3,:)/(2*pi), 'LineWidth', lineWidth);
+%plot(epochVector, 2*pi*configuration.dopplerProfile(2) * ones(1,length(epochVector)), 'LineWidth', lineWidth);
 legend({"LQG's estimated Doppler frequency", "True Doppler frequency"});
 ylabel("Doppler estimate");
 xlabel("Epochs (Simulation Steps)");
@@ -346,7 +349,7 @@ hold on;
 plot(real(channelStateRecord(q+1, :)), 'LineWidth', lineWidth);
 hold off;
 
-VariationRecord = zeros(10, simulationSteps);
+VariationRecord = zeros(12, simulationSteps);
 for i = 1:simulationSteps
     VariationRecord(:,i) = kalmanGainRecord(:,:,i)*innovationRecord(:,i);
 end

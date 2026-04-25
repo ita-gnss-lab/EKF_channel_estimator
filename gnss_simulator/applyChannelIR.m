@@ -25,7 +25,7 @@ function y = applyChannelIR(x, h)
 
     % Hamming window
     w  = hamming(numel(h));
-    hW = h .* w;
+    hW = h.* w;
 
     % L2 (energy) preservation
     e0 = sum(abs(h).^2);

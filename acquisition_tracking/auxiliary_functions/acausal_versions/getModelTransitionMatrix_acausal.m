@@ -1,4 +1,4 @@
-function [carrierStateTransitionMatrix, channelStateTransitionMatrix] = getModelTransitionMatrix(epoch, numberOfTaps, beta)
+function [carrierStateTransitionMatrix, channelStateTransitionMatrix] = getModelTransitionMatrix_acausal(epoch, numberOfTaps, beta)
 %GETMODELTRANSITIONMATRIX Summary of this function goes here
 %   Detailed explanation goes here
 T = epoch;
