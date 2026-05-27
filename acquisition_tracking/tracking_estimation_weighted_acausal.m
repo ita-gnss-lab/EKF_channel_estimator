@@ -4,9 +4,10 @@ addpath(genpath(fullfile("..", "..","EKF_channel_estimator")));
 
 load config_cte_doppler.mat
 rng(26437226); 
+configuration.carrierToNoiseDensityRatio = 40;
 
 %% Parameters
-simulationSteps = 10000;
+simulationSteps = 5000;
 constraint_noise = 10^(-4.44);%10.^[-2.63 -3.44 -4 -4.28 -4.49 -4.63 -4.85 -5.2 -5.37 -5.88];
 q = 5;
 C = 2*q + 1;
@@ -26,7 +27,7 @@ carrierToNoiseRatioLinear = 10^(configuration.carrierToNoiseDensityRatio / 10);
 % Compute the noise variance
 thermalNoiseVarianceSquared = configuration.samplingFrequency / carrierToNoiseRatioLinear;
 % [1e-1 1e-1 1e-2 1e-3 1e-4]
-sigma2Vec = [1e-1 1e-1 1e-2 1e-3 1e-10];
+sigma2Vec = [0 9.295e-5 7.877e-6 0.5 1e-10];
 Q = getStateCovarianceMatrix_acausal(...
     sigma2Vec, ...
     epoch, ...
@@ -62,7 +63,7 @@ constraintRecord = zeros(1, simulationSteps);
 % T_e = kappa*T_e_0;
 % T_u = T_u_0/kappa;
 
-relation = 10;
+relation = 0.1;
 T_e = relation * diag([beta, 1, 1/epoch, 1/epoch^2]);
 T_u = diag([beta, 1, 1/epoch, 1/epoch^2]);
 
@@ -98,12 +99,12 @@ channelCovarianceMatrix(q + 1, q + 1) = 0.0001; % 0.001;
 
 % NOTE: I changed from x_k_k to P_k_k_1, because, in fact the
 % initialization uses P[1|0].  1e-1, 0, (50)^2/12, (0.1)^2/12,
-P_k_k_1 = blkdiag(1e-1, 0, (50)^2/12, (0.1)^2/12, channelCovarianceMatrix); 
+P_k_k_1 = blkdiag((1/configuration.chippingFrequency)^2/3, pi^2/3, (100)^2*(4*pi^2)/3, 0.5, channelCovarianceMatrix); 
 % P_k_k_1 = blkdiag(1e-1, 0, 0, 0, zeros(1 + q));
 
 
-phaseError = 0;
-DopplerError = 50;
+phaseError = pi/4;
+DopplerError = 5;
 x_LQG_k = [1.005e-4, ...
     configuration.dopplerProfile(1) + phaseError, ...
     2*pi*(configuration.dopplerProfile(2) + DopplerError), ...
@@ -112,7 +113,7 @@ x_LQG_k = [1.005e-4, ...
 u_LQG = L * x_k_k_1(WienerStatesSelection);
 
 %% Simulate Signal
-configuration.addNoise = false;
+configuration.addNoise = true;
 [simulatedSignal, ~, LOSPhase, LOSDelay] = gnssReceivedSignal(configuration, simulationSteps + 1);
 %simulatedSignal = applyChannelIR(simulatedSignal, simulationTaps);
 %% Simulation
@@ -348,8 +349,8 @@ figure(Name="main tap", NumberTitle="off");
 hold on; 
 plot(real(channelStateRecord(q+1, :)), 'LineWidth', lineWidth);
 hold off;
-
-VariationRecord = zeros(12, simulationSteps);
-for i = 1:simulationSteps
-    VariationRecord(:,i) = kalmanGainRecord(:,:,i)*innovationRecord(:,i);
-end
+% 
+% VariationRecord = zeros(12, simulationSteps);
+% for i = 1:simulationSteps
+%     VariationRecord(:,i) = kalmanGainRecord(:,:,i)*innovationRecord(:,i);
+% end
