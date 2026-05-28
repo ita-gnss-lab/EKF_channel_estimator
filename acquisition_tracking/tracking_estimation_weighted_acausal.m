@@ -4,7 +4,7 @@ addpath(genpath(fullfile("..", "..","EKF_channel_estimator")));
 
 load config_no_doppler.mat
 rng(26437226); 
-
+configuration.tdl_channel = [0.8 0 0 0 0 0];
 %% Parameters
 simulationSteps = 500;
 constraint_noise = 10^(-3.44);%10.^[-2.63 -3.44 -4 -4.28 -4.49 -4.63 -4.85 -5.2 -5.37 -5.88];
@@ -24,7 +24,7 @@ carrierToNoiseRatioLinear = 10^(configuration.carrierToNoiseDensityRatio / 10);
 % Compute the noise variance
 thermalNoiseVarianceSquared = configuration.samplingFrequency / carrierToNoiseRatioLinear;
 % [1e-1 1e-1 1e-2 1e-3 1e-4]
-sigma2Vec = [1e-1 0 0 0 1e-4];
+sigma2Vec = [1e-1 10 0 0 1e-3];
 Q = getStateCovarianceMatrix_acausal(...
     sigma2Vec, ...
     epoch, ...
@@ -83,23 +83,24 @@ F = blkdiag(F_W, F_H);
 x_k_k_1 = zeros(4 + (2*q+1), 1);
 main_tap = false(size(x_k_k_1));
 main_tap(4 + q + 1) = true;
-x_k_k_1(main_tap) = 0.95;
+x_k_k_1(main_tap) = 0.9;
 other_taps = true(size(x_k_k_1));
 other_taps(1:4) = false;
 other_taps(main_tap) = false;
-x_k_k_1(other_taps) = 0.1;
+x_k_k_1(other_taps) = 0;
+
 % HACK: I zeroed this initial covariance matrix to my analysis about the
 % phase estimation.
-channelCovarianceMatrix = 0.00001 * eye(2*q + 1); %0.000001 * eye(1 + q);
-channelCovarianceMatrix(q + 1, q + 1) = 0.0001; % 0.001;  
+channelCovarianceMatrix = 1e-5 * eye(2*q + 1); %0.000001 * eye(1 + q);
+channelCovarianceMatrix(q + 1, q + 1) = 1e-4; % 0.001;  
 
 % NOTE: I changed from x_k_k to P_k_k_1, because, in fact the
 % initialization uses P[1|0].  1e-1, 0, (50)^2/12, (0.1)^2/12,
-P_k_k_1 = blkdiag(1e-1, 0, 0, 0, channelCovarianceMatrix); 
+P_k_k_1 = blkdiag((0.01*(1/configuration.chippingFrequency))^2, (0.01*(1/configuration.chippingFrequency))^2, 0, 0, channelCovarianceMatrix); 
 % P_k_k_1 = blkdiag(1e-1, 0, 0, 0, zeros(1 + q));
 
 
-phaseError = 0;
+phaseError = pi/4;
 DopplerError = 0;
 x_LQG_k = [1.005e-4, ...
     configuration.dopplerProfile(1) + phaseError, ...
@@ -321,16 +322,16 @@ xlabel("Epochs (Simulation Steps)");
 set(gca, "FontSize", fontSize);
 hold off;
 
-figure(Name="Channel Weights Over Time", NumberTitle="off");
-hold on;
-for i = 1:3
-    plot(abs(channelStateRecord(i, :)), 'LineWidth', lineWidth);
-end
-yyaxis right
-plot(constraintRecord, 'LineWidth', lineWidth);
-ylabel("Constraint");
-xlabel("Epochs (Simulation Steps)");
-hold off;
+% figure(Name="Channel Weights Over Time", NumberTitle="off");
+% hold on;
+% for i = 1:3
+%     plot(abs(channelStateRecord(i, :)), 'LineWidth', lineWidth);
+% end
+% yyaxis right
+% plot(constraintRecord, 'LineWidth', lineWidth);
+% ylabel("Constraint");
+% xlabel("Epochs (Simulation Steps)");
+% hold off;
 
 figure(Name="secondary taps", NumberTitle="off");
 hold on;

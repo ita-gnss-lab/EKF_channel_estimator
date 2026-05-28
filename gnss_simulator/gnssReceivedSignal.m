@@ -32,6 +32,7 @@ delayedCode = delayHandler(sampledCode, delayInSamples);
 % delayedCode = circshift(sampledCode, delayInSamples);
 % Applies the phase
 distorted_code = delayedCode .* exp(1j*LOSPhase);
+distorted_code = applyChannelIR(distorted_code, configuration.tdl_channel);
 
 %% THERMAL NOISE
 if configuration.addNoise 
