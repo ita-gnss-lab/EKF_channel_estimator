@@ -7,9 +7,6 @@ end
 delayError = x_k_k_1(1);
 channelWeights = x_k_k_1(5:end);
 channelOrder = (numel(channelWeights) - 1)/2;
-tapOrder = -q:q;
-tapPhase = (-(2*pi*configuration.carrierFrequency)/configuration.samplingFrequency)*tapOrder;
-channelWeights = channelWeights .* exp(1j * tapPhase');
 
 if isfield(configuration, "correlatorHalfSpan")
     correlatorHalfSpan = configuration.correlatorHalfSpan;
