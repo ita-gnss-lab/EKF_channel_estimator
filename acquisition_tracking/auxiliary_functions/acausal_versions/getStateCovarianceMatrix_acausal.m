@@ -26,7 +26,9 @@ errorStateCovariance = sigma2Vec(1) * zeroOrder ...
     + sigma2Vec(4) * thirdOrder;
 
 channelStateCovariance = sigma2Vec(5) * eye(2*numberOfTaps + 1);
-channelStateCovariance(1,1) = 10*channelStateCovariance(1, 1);
+mainTapIndex = numberOfTaps + 1;
+channelStateCovariance(mainTapIndex, mainTapIndex) = ...
+    10 * channelStateCovariance(mainTapIndex, mainTapIndex);
 
 stateCovarianceMatrix = blkdiag(errorStateCovariance, channelStateCovariance);
 end

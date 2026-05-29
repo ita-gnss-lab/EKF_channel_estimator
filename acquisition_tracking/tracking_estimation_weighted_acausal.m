@@ -7,7 +7,7 @@ rng(26437226);
 configuration.tdl_channel = [0.8 0 0 0 0 0];
 %% Parameters
 simulationSteps = 500;
-constraint_noise = 10^(-3.44);%10.^[-2.63 -3.44 -4 -4.28 -4.49 -4.63 -4.85 -5.2 -5.37 -5.88];
+constraint_noise = 10^(-5.88);%10.^[-2.63 -3.44 -4 -4.28 -4.49 -4.63 -4.85 -5.2 -5.37 -5.88];
 q = 5;
 C = 2*q + 1;
 middleSample = q + 1;
@@ -24,7 +24,7 @@ carrierToNoiseRatioLinear = 10^(configuration.carrierToNoiseDensityRatio / 10);
 % Compute the noise variance
 thermalNoiseVarianceSquared = configuration.samplingFrequency / carrierToNoiseRatioLinear;
 % [1e-1 1e-1 1e-2 1e-3 1e-4]
-sigma2Vec = [1e-1 10 0 0 1e-3];
+sigma2Vec = [1e-1 0 0 0 1e-1];
 Q = getStateCovarianceMatrix_acausal(...
     sigma2Vec, ...
     epoch, ...
@@ -83,7 +83,7 @@ F = blkdiag(F_W, F_H);
 x_k_k_1 = zeros(4 + (2*q+1), 1);
 main_tap = false(size(x_k_k_1));
 main_tap(4 + q + 1) = true;
-x_k_k_1(main_tap) = 0.9;
+x_k_k_1(main_tap) = 0.8;
 other_taps = true(size(x_k_k_1));
 other_taps(1:4) = false;
 other_taps(main_tap) = false;
@@ -91,8 +91,8 @@ x_k_k_1(other_taps) = 0;
 
 % HACK: I zeroed this initial covariance matrix to my analysis about the
 % phase estimation.
-channelCovarianceMatrix = 1e-5 * eye(2*q + 1); %0.000001 * eye(1 + q);
-channelCovarianceMatrix(q + 1, q + 1) = 1e-4; % 0.001;  
+channelCovarianceMatrix = 1e0 * eye(2*q + 1); %0.000001 * eye(1 + q);
+channelCovarianceMatrix(q + 1, q + 1) = 1e-1; % 0.001;  
 
 % NOTE: I changed from x_k_k to P_k_k_1, because, in fact the
 % initialization uses P[1|0].  1e-1, 0, (50)^2/12, (0.1)^2/12,
@@ -100,9 +100,9 @@ P_k_k_1 = blkdiag((0.01*(1/configuration.chippingFrequency))^2, (0.01*(1/configu
 % P_k_k_1 = blkdiag(1e-1, 0, 0, 0, zeros(1 + q));
 
 
-phaseError = pi/4;
+phaseError = 0;
 DopplerError = 0;
-x_LQG_k = [1.005e-4, ...
+x_LQG_k = [1.000e-4, ...
     configuration.dopplerProfile(1) + phaseError, ...
     2*pi*(configuration.dopplerProfile(2) + DopplerError), ...
     2*pi*configuration.dopplerProfile(3)].';
@@ -114,14 +114,13 @@ configuration.addNoise = false;
 [simulatedSignal, ~, LOSPhase, LOSDelay] = gnssReceivedSignal(configuration, simulationSteps + 1);
 
 %% Simulation
-plotMeasures = true;
+plotMeasures = false;
 correlatorTaps = -q:1:q;
 % NOTE: (Rodrigo): Changed the main loop to match algorithm 1 of my report.
 for k = 1 : simulationSteps
     %% Signal 
     receivedSignal = simulatedSignal(((k - 1) * samplesTotal + 1: k * samplesTotal));
-    % NOTE (Thiago): corrects the samples that are not +-1
-    receivedSignal = round(receivedSignal);
+
     %% LQG Controller
     % Update LQG state 
     x_LQG_k = F_W * x_LQG_k + B_LQG * u_LQG;
@@ -137,8 +136,6 @@ for k = 1 : simulationSteps
     if k > 1
         % EKF's Update Step
         correlatorBank = buildCorrelatorBank(configuration, x_LQG_k(1), q);
-        % NOTE (Thiago): corrects the samples that are not +-1
-        correlatorBank = round(correlatorBank);
         z_k = [correlatorBank * wipedSignal / samplesTotal; 0];
         constraint_value = sum(abs(x_k_k_1(other_taps)).^2)/((q-1)*abs(x_k_k_1(main_tap))^2);
         z_hat_k_aux = measurementFunction_acausal(x_k_k_1, configuration, q) / samplesTotal;
@@ -347,7 +344,7 @@ hold on;
 plot(real(channelStateRecord(q+1, :)), 'LineWidth', lineWidth);
 hold off;
 
-VariationRecord = zeros(10, simulationSteps);
+VariationRecord = zeros(size(kalmanGainRecord, 1), simulationSteps);
 for i = 1:simulationSteps
     VariationRecord(:,i) = kalmanGainRecord(:,:,i)*innovationRecord(:,i);
 end
