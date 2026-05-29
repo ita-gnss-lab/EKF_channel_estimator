@@ -1,5 +1,9 @@
-function estimative = measurementFunction_acausal(x_k_k_1, configuration, q)
+function estimative = measurementFunction_acausal(x_k_k_1, configuration, q, localDelay)
 %% Generate Autocorrelation Matrix
+if nargin < 4 || isempty(localDelay)
+    localDelay = 0;
+end
+
 delayError = x_k_k_1(1);
 channelWeights = x_k_k_1(5:end);
 channelOrder = (numel(channelWeights) - 1)/2;
@@ -14,7 +18,7 @@ else
 end
 
 shiftedCorrelationsMatrix = getShiftedCorrelations_acausal( ...
-    delayError, correlatorHalfSpan, configuration, channelOrder);
+    delayError, correlatorHalfSpan, configuration, channelOrder, localDelay);
 
 % epoch = configuration.totalChips / configuration.chippingFrequency;
 % samplesTotal = epoch*configuration.samplingFrequency;
