@@ -35,8 +35,11 @@ beta = -1 / (2 * pi * configuration.carrierFrequency);
 WienerStatesSelection = 1:4;
 trueDelay = -configuration.dopplerProfile(1) / ...
     (2*pi*configuration.carrierFrequency);
-initialDelayEstimate = trueDelay;
+initialDelayErrorSamples = 0;
+initialDelayEstimate = trueDelay + ...
+    initialDelayErrorSamples / configuration.samplingFrequency;
 initialDelayError = trueDelay - initialDelayEstimate;
+delayErrorStdSamples = max(2, abs(initialDelayErrorSamples));
 
 truthChannelAcausal = zeros(2*q + 1, 1);
 numberOfTruthTaps = min(numel(configuration.tdl_channel), q + 1);
@@ -49,8 +52,6 @@ truthChannelState = truthChannelAcausal;
 carrierToNoiseRatioLinear = 10^(configuration.carrierToNoiseDensityRatio / 10);
 % Compute the noise variance
 thermalNoiseVarianceSquared = configuration.samplingFrequency / carrierToNoiseRatioLinear;
-% The truth model in this script is static; uncertainty enters through
-% P[1|0], not through per-epoch process drift.
 sigma2Vec = [1e-4 0 0 0 1e-2];
 Q = getStateCovarianceMatrix_acausal(...
     sigma2Vec, ...
@@ -121,7 +122,7 @@ F = blkdiag(F_W, F_H);
 x_k_k_1 = zeros(4 + (2*q+1), 1);
 main_tap = false(size(x_k_k_1));
 main_tap(4 + q + 1) = true;
-x_k_k_1(main_tap) = 0.75;
+x_k_k_1(main_tap) = 1;
 other_taps = true(size(x_k_k_1));
 other_taps(1:4) = false;
 other_taps(main_tap) = false;
@@ -133,7 +134,7 @@ end
 
 % NOTE: I changed from x_k_k to P_k_k_1, because, in fact the
 % initialization uses P[1|0].  1e-1, 0, (50)^2/12, (0.1)^2/12,
-delayErrorStd = 0; %abs(initialDelayError);
+delayErrorStd = delayErrorStdSamples / configuration.samplingFrequency;
 phaseErrorStd = 0;
 channelCovarianceMatrix = 1e-2 * eye(2*q + 1);
 channelCovarianceMatrix(q + 1, q + 1) = 1e-1;
