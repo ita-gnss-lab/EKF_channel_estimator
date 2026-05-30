@@ -12,17 +12,17 @@ configuration.carrierToNoiseDensityRatio = 42;
 configuration.dopplerProfile(1:3) = [0 0 0];
 configuration.dopplerProfile(1) = ...
     -2*pi*configuration.carrierFrequency*1e-4;
-numberOfCausalTruthTaps = 9;
+numberOfCausalTruthTaps = 19;
 truthTapOrder = 0:(numberOfCausalTruthTaps - 1);
 configuration.tdl_channel = 0.8 * ...
-    exp((-0.35 + 1j*pi/5) * truthTapOrder);
+    exp((-0.85 + 1j*pi/5) * truthTapOrder);
 %% Parameters
-simulationSteps = 500;
+simulationSteps = 1500;
 useTapEnergyConstraint = false;
-useAcausalTaps = false;
+useAcausalTaps = true;
 usePerfectFrozenTruthState = false;
 constraint_noise = 10^(-2.63);%10.^[-2.63 -3.44 -4 -4.28 -4.49 -4.63 -4.85 -5.2 -5.37 -5.88];
-q = 8;
+q = numberOfCausalTruthTaps;
 C = 2*q + 1;
 middleSample = q + 1;
 acausalTapStateIndices = 5:(4+q);
@@ -52,7 +52,7 @@ truthChannelState = truthChannelAcausal;
 carrierToNoiseRatioLinear = 10^(configuration.carrierToNoiseDensityRatio / 10);
 % Compute the noise variance
 thermalNoiseVarianceSquared = configuration.samplingFrequency / carrierToNoiseRatioLinear;
-sigma2Vec = [1e-1 0 0 0 1e-2];
+sigma2Vec = [1e-1 1e1 0 0 1e-4];
 Q = getStateCovarianceMatrix_acausal(...
     sigma2Vec, ...
     epoch, ...
@@ -147,20 +147,20 @@ if ~useAcausalTaps
 end
 P_k_k_1 = blkdiag( ...
     delayErrorStd^2, ...
-    phaseErrorStd^2, ...
+    10*phaseErrorStd^2, ...
     0, ...
     0, ...
     channelCovarianceMatrix);
 % P_k_k_1 = blkdiag(1e-1, 0, 0, 0, zeros(1 + q));
 
-initialPhaseError = 0;
+initialPhaseError = phaseErrorStd;
 x_LQG_k = [initialDelayEstimate, ...
     configuration.dopplerProfile(1) + initialPhaseError, ...
     2*pi*configuration.dopplerProfile(2), ...
     2*pi*configuration.dopplerProfile(3)].';
 
 u_LQG = L * x_k_k_1(WienerStatesSelection);
-u_LQG(2) = 0;
+ u_LQG(2) = 0;
 u_LQG(3:4) = 0;
 
 %% Simulate Signal
@@ -178,10 +178,10 @@ for k = 1 : simulationSteps
     %% LQG Controller
     % Update LQG state 
     x_LQG_k = F_W * x_LQG_k + B_LQG * u_LQG;
-    x_LQG_k(2) = configuration.dopplerProfile(1);
-    x_LQG_k(3:4) = [
-        2*pi*configuration.dopplerProfile(2);
-        2*pi*configuration.dopplerProfile(3)];
+    % x_LQG_k(2) = configuration.dopplerProfile(1);
+    % x_LQG_k(3:4) = [
+    %     2*pi*configuration.dopplerProfile(2);
+    %     2*pi*configuration.dopplerProfile(3)];
 
     LQGStateRecord(:, k) = x_LQG_k(1:4);
 
@@ -265,7 +265,7 @@ for k = 1 : simulationSteps
         % EKF's state update
         x_k_k = x_k_k_1 + K_k * innovation;
         x_k_k(WienerStatesSelection) = real(x_k_k(WienerStatesSelection));
-        x_k_k(2) = 0;
+        % x_k_k(2) = 0;
         x_k_k(3:4) = 0;
         if ~useAcausalTaps
             x_k_k(acausalTapStateIndices) = 0;
@@ -280,7 +280,7 @@ for k = 1 : simulationSteps
         
         % LQG control vector computation
         u_LQG = L * x_k_k(WienerStatesSelection);
-        u_LQG(2) = 0;
+        % u_LQG(2) = 0;
         u_LQG(3:4) = 0;
     else
         % Initialization procedure
@@ -291,7 +291,7 @@ for k = 1 : simulationSteps
     % EKF's Projection Ahead Step
     x_k_k_1 = F * x_k_k;  
     x_k_k_1(WienerStatesSelection) = real(x_k_k_1(WienerStatesSelection));
-    x_k_k_1(2) = 0;
+    % x_k_k_1(2) = 0;
     x_k_k_1(3:4) = 0;
     if ~useAcausalTaps
         x_k_k_1(acausalTapStateIndices) = 0;
