@@ -8,16 +8,16 @@ samplesPerChip = 16;
 configuration.samplingFrequency = samplesPerChip * configuration.chippingFrequency;
 
 %% Stress-test truth
-configuration.carrierToNoiseDensityRatio = 42;
+configuration.carrierToNoiseDensityRatio = 50;
 configuration.dopplerProfile(1:3) = [0 0 0];
 configuration.dopplerProfile(1) = ...
     -2*pi*configuration.carrierFrequency*1e-4;
-numberOfCausalTruthTaps = 19;
+numberOfCausalTruthTaps = 9;
 truthTapOrder = 0:(numberOfCausalTruthTaps - 1);
 configuration.tdl_channel = 0.8 * ...
     exp((-0.85 + 1j*pi/5) * truthTapOrder);
 %% Parameters
-simulationSteps = 1500;
+simulationSteps = 5000;
 useTapEnergyConstraint = false;
 useAcausalTaps = true;
 usePerfectFrozenTruthState = false;
@@ -52,7 +52,7 @@ truthChannelState = truthChannelAcausal;
 carrierToNoiseRatioLinear = 10^(configuration.carrierToNoiseDensityRatio / 10);
 % Compute the noise variance
 thermalNoiseVarianceSquared = configuration.samplingFrequency / carrierToNoiseRatioLinear;
-sigma2Vec = [1e-1 1e1 0 0 1e-4];
+sigma2Vec = [1e5 1e4 0 0 1e-2];
 Q = getStateCovarianceMatrix_acausal(...
     sigma2Vec, ...
     epoch, ...
@@ -67,7 +67,7 @@ if usePerfectFrozenTruthState
 end
 correlatorBank = buildCorrelatorBank(configuration, 0, q);
 
-R  = (thermalNoiseVarianceSquared / samplesTotal.^2) * ...
+R  = (thermalNoiseVarianceSquared / samplesTotal) * ...
         (correlatorBank * correlatorBank.');
 if useTapEnergyConstraint
     R = [R zeros(2*q+1, 1); zeros(1, 2*q+1) constraint_noise];
@@ -136,8 +136,8 @@ end
 % initialization uses P[1|0].  1e-1, 0, (50)^2/12, (0.1)^2/12,
 delayErrorStd = delayErrorStdSamples / configuration.samplingFrequency;
 phaseErrorStd = 0;
-channelCovarianceMatrix = 1e-2 * eye(2*q + 1);
-channelCovarianceMatrix(q + 1, q + 1) = 1e-1;
+channelCovarianceMatrix = 1e-1 * eye(2*q + 1);
+channelCovarianceMatrix(q + 1, q + 1) = 1e-0;
 if usePerfectFrozenTruthState
     channelCovarianceMatrix(:) = 0;
 end
@@ -164,11 +164,11 @@ u_LQG = L * x_k_k_1(WienerStatesSelection);
 u_LQG(3:4) = 0;
 
 %% Simulate Signal
-configuration.addNoise = false;
+configuration.addNoise = true;
 [simulatedSignal, ~, LOSPhase, LOSDelay] = gnssReceivedSignal(configuration, simulationSteps + 1);
 
 %% Simulation
-plotMeasures = false;
+plotMeasures = true;
 correlatorTaps = -q:1:q;
 % NOTE: (Rodrigo): Changed the main loop to match algorithm 1 of my report.
 for k = 1 : simulationSteps
@@ -216,7 +216,7 @@ for k = 1 : simulationSteps
             plot(correlatorTaps(q+1:end), real(z_hat_k(q+1:C)), 'x');
             hold off;
             ylabel('Real and Imag parts of z_k and z_k_hat');
-            xlabel('Correlator tap');
+            xlabel(sprintf('Correlator tap %d', k));
             legend({'Real $z[k]$', 'Real $\hat{z}[k]$', ...
                 'Imag $z[k]$', 'Imag $\hat{z}[k]$', ...
                 'Causal real $z[k]$', 'Causal real $\hat{z}[k]$'}, ...
