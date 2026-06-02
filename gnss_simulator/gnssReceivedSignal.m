@@ -36,7 +36,7 @@ distorted_code = applyChannelIR(distorted_code, configuration.tdl_channel);
 
 %% THERMAL NOISE
 if configuration.addNoise 
-    noise = get_simple_thermal_noise(length(time), 1 / configuration.samplingFrequency, configuration.carrierToNoiseDensityRatio);
+    noise = get_simple_thermal_noise(length(time), 1 / configuration.chippingFrequency, configuration.carrierToNoiseDensityRatio);
     receivedSignal = distorted_code + noise; 
 else
     receivedSignal = distorted_code;
