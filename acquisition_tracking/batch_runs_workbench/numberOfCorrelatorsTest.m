@@ -6,7 +6,7 @@ simulation_config.totalChips =                  1023;
 simulation_config.carrierFrequency =            1.57542e+09; %Hz
 simulation_config.chippingFrequency =           1023000; %Hz
 simulation_config.samplesPerChip =              16;
-simulation_config.addNoise =                    true; 
+simulation_config.addNoise =                    false; 
 simulation_config.dopplerProfile = ...
 [-2 * pi * simulation_config.carrierFrequency * (30e3 / 3e8) ...
     0 0];
@@ -28,7 +28,7 @@ seed = 26437226;
 experimentPrefix = 'numberOfCorrelatorsTest';
 
 % Preset the batch run
-batchVector = 9:2:21;
+batchVector = [9 15 21];
 
 % In the loop, preset the cahnging variable before run_simulation
 for i = 1:length(batchVector)
