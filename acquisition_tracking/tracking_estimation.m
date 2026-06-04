@@ -1,8 +1,10 @@
 clearvars; clc; close all;
 
-addpath(genpath(fullfile("..", "..","EKF_channel_estimator")));
+scriptDirectory = fileparts(mfilename('fullpath'));
+projectRoot = fileparts(scriptDirectory);
+addpath(genpath(projectRoot));
 
-load config_cte_doppler.mat
+load(fullfile(scriptDirectory, 'config_cte_doppler.mat'));
 rng(26437226);
 
 %% Parameters

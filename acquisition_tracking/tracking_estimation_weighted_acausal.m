@@ -1,8 +1,10 @@
 clearvars; clc; close all;
 
-addpath(genpath(fullfile("..", "..","EKF_channel_estimator")));
+scriptDirectory = fileparts(mfilename('fullpath'));
+projectRoot = fileparts(scriptDirectory);
+addpath(genpath(projectRoot));
 
-load config_no_doppler.mat
+load(fullfile(scriptDirectory, 'config_no_doppler.mat'));
 rng(26437226);
 samplesPerChip = 8;
 configuration.samplingFrequency = samplesPerChip * configuration.chippingFrequency;
@@ -295,9 +297,6 @@ numberOfForwardTaps = numel(forwardTapIndices);
 forwardTapNumbers = 0:(numberOfForwardTaps - 1);
 forwardTapDelayTc = forwardTapNumbers / samplesPerChip;
 estimatedForwardChannel = channelStateRecord(forwardTapIndices, :);
-estimatedForwardChannelMean = mean(estimatedForwardChannel, 2);
-estimatedForwardChannelRealStd = std(real(estimatedForwardChannel), 0, 2);
-estimatedForwardChannelImagStd = std(imag(estimatedForwardChannel), 0, 2);
 trueForwardChannel = truthChannelState(forwardTapIndices);
 channelPlotRows = ceil(sqrt(numberOfForwardTaps));
 channelPlotColumns = ceil(numberOfForwardTaps / channelPlotRows);
@@ -424,47 +423,6 @@ for tapIndex = forwardTapIndices
 end
 legend({"Estimate", "Truth"});
 
-figure(Name="Channel Coefficient Summary", NumberTitle="off");
-tiledlayout(1, 2);
-
-nexttile;
-realBar = bar(forwardTapNumbers, ...
-    [real(estimatedForwardChannelMean) real(trueForwardChannel)]);
-realBar(1).FaceColor = [0.55 0.75 0.95];
-realBar(2).FaceColor = [0 0.5 0];
-hold on;
-errorbar(realBar(1).XEndPoints, real(estimatedForwardChannelMean), ...
-    estimatedForwardChannelRealStd, 'LineStyle', 'none', ...
-    'Color', [0 0.4470 0.7410], 'LineWidth', lineWidth);
-hold off;
-grid on;
-legend({"Estimated Channel Coefficients", ...
-    "True Channel Coefficients"});
-title("Real Channel Coefficients");
-ylabel("Channel Coefficients");
-xticks(forwardTapNumbers);
-xticklabels(compose("h_{%d}", forwardTapNumbers));
-set(gca, "FontSize", fontSize);
-
-nexttile;
-imagBar = bar(forwardTapNumbers, ...
-    [imag(estimatedForwardChannelMean) imag(trueForwardChannel)]);
-imagBar(1).FaceColor = [0.55 0.75 0.95];
-imagBar(2).FaceColor = [0 0.5 0];
-hold on;
-errorbar(imagBar(1).XEndPoints, imag(estimatedForwardChannelMean), ...
-    estimatedForwardChannelImagStd, 'LineStyle', 'none', ...
-    'Color', [0 0.4470 0.7410], 'LineWidth', lineWidth);
-hold off;
-grid on;
-legend({"Estimated Channel Coefficients", ...
-    "True Channel Coefficients"});
-title("Imaginary Channel Coefficients");
-ylabel("Channel Coefficients");
-xticks(forwardTapNumbers);
-xticklabels(compose("h_{%d}", forwardTapNumbers));
-set(gca, "FontSize", fontSize);
-
 figure(Name="Channel Impulse Response History", NumberTitle="off");
 [timeGrid, tapDelayGrid] = meshgrid(timeMs, forwardTapDelayTc);
 tiledlayout(1, 2);
@@ -538,17 +496,3 @@ hold off;
 % for i = 1:simulationSteps
 %     VariationRecord(:, i) = kalmanGainRecord(:, :, i) * innovationRecord(:, i);
 % end
-
-function shiftedCorrelations = getShiftedCorrelationsFromBank( ...
-    correlatorBank, delay, configuration, channelTapDelays)
-
-samplesPerEpoch = size(correlatorBank, 2);
-channelReplicas = zeros(numel(channelTapDelays), samplesPerEpoch);
-for col = 1:numel(channelTapDelays)
-    channelReplicas(col, :) = getCodeReplica( ...
-        configuration, delay + channelTapDelays(col)).';
-end
-
-shiftedCorrelations = correlatorBank * channelReplicas.';
-
-end

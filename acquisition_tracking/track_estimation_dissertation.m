@@ -1,10 +1,12 @@
 clearvars; clc; close all;
 
-addpath(genpath(fullfile("..", "..","EKF_channel_estimator")));
-load config_no_doppler.mat
+scriptDirectory = fileparts(mfilename('fullpath'));
+projectRoot = fileparts(scriptDirectory);
+addpath(genpath(projectRoot));
+load(fullfile(scriptDirectory, 'config_no_doppler.mat'));
 
 %% Simulation Setup
-rng(26437226);
+rngSeed = 26437226;
 simulationSteps = 2000;
 
 % Andreas Iliopoulos article, Section 4: lambda = 4 and
@@ -47,167 +49,97 @@ samplesTotal = round(epoch * configuration.samplingFrequency);
 % Delta = 2*Tc/L = 0.125*Tc. With fs = 8/Tc, one sample is 0.125*Tc.
 channelTapDelays = (0:q) / configuration.samplingFrequency;
 
-%% Synthetic Channel and Delay Truth
+%% EKF Model Parameters
+stateDimension = 1 + tapCount;
+delayStateIndex = 1;
+tapStateIndices = 2:stateDimension;
+mainTapStateIndex = 2;
+
 % (Rodrigo): I configured the simulated delay random walk. Andreas uses
 % beta_tau = 0.001*Tc in Section 4; this script uses 0.005*Tc. The system
 % only works robustly with this configuration below. With Andreas'
 % configuration, it only works for some time (he used 200 ms/epochs in his
 % work), but later it loses lock.
 delayProcessNoiseStd = 0.005 / configuration.chippingFrequency;
-trueDelayEpochRecord = trueDelay + ...
-    cumsum([0 delayProcessNoiseStd * randn(1, simulationSteps)]);
-
-% Zero-order hold from epoch-rate delay to sample-rate signal generation.
-configuration.codeDelay = repelem(trueDelayEpochRecord, samplesTotal).';
-
-% (Rodrigo): I configured this synthetic causal diffuse channel model. It is
-% not the analog distortion-fault model from Figure 12 of the Andreas
-% article. The idea behind this is to model the specular component (LOS) as
-% 1 and a diffuse complex channel profile with an exponential decaying
-% structure. Note that this is purely synthetic and not necessarily would
-% behave as a channel of a GNSS-R measurement.
-numberOfCausalTruthTaps = q + 1;
-diffuseTapOrder = 1:(numberOfCausalTruthTaps - 1);
-diffusePowerProfile = exp(-0.7 * diffuseTapOrder);
-configuration.tdl_channel = zeros(1, numberOfCausalTruthTaps);
-configuration.tdl_channel(1) = 1;
-configuration.tdl_channel(2:end) = 0.8 * sqrt(diffusePowerProfile) .* ...
-    (randn(1, numel(diffuseTapOrder)) + ...
-    1j * randn(1, numel(diffuseTapOrder))) / sqrt(2);
-
-truthChannelState = configuration.tdl_channel(:);
-
-%% EKF State Definition
-stateDimension = 1 + tapCount;
-delayStateIndex = 1;
-tapStateIndices = 2:stateDimension;
-mainTapStateIndex = 2;
-
-initialDelayEstimate = trueDelayEpochRecord(1) + ...
-    initialDelayErrorSamples / configuration.samplingFrequency;
 
 % Andreas Iliopoulos article, Section 4: initial LOS delay standard
 % deviation is 0.5*Tc.
 initialDelayStd = 0.5 / configuration.chippingFrequency;
 
-%% Covariances
-carrierToNoiseRatioLinear = ...
-    10^(configuration.carrierToNoiseDensityRatio / 10);
-thermalNoiseVariance = ...
-    configuration.samplingFrequency / carrierToNoiseRatioLinear;
-
-delayProcessNoiseVariance = delayProcessNoiseStd^2;
-
 % (Rodrigo): I configured the channel process noise for this dissertation
 % experiment. Andreas uses beta_h = 0.01 for the channel random walk in
 % Section 4. Larger values can degrade the delay estimation precision.
 tapProcessNoiseVariance = 5e-3^2;
-channelProcessCovariance = tapProcessNoiseVariance * eye(tapCount);
-
-Q = blkdiag(delayProcessNoiseVariance, channelProcessCovariance);
 
 % (Rodrigo): I configured this initial channel covariance. Andreas states an
 % initial amplitude standard deviation of 0.1 in Section 4. I configured
 % with as 0.5, because I noticed that the channel taps converges faster to
 % the true values this way.
-initialChannelCovarianceMatrix = 0.5^2 * eye(tapCount);
+initialChannelStd = 0.5;
 
-%% State History Vectors
-measurementDimension = C;
-delayEstimateRecord = zeros(1, simulationSteps);
-channelStateRecord = zeros(tapCount, simulationSteps);
-innovationRecord = zeros(measurementDimension, simulationSteps);
+% (Rodrigo): I configured a 500 ms safeguard before computing the channel
+% coefficient mean and standard deviation, so the initial convergence
+% transient is not included in the summary bars.
+channelSummarySafeguardMs = 500;
 
-%% Initialization
-x_k_k_1 = zeros(stateDimension, 1);
-x_k_k_1(delayStateIndex) = initialDelayEstimate;
-% (Rodrigo): I configured the initial channel estimate as LOS tap equal to 1
-% and all remaining taps equal to 0, as Christian Sielbert does in his
-% thesis (Section 2.3.7 - Algorithm Initialization).
-x_k_k_1(mainTapStateIndex) = 1;
-
-P_k_k_1 = blkdiag(initialDelayStd^2, initialChannelCovarianceMatrix);
-
-correlatorBank = buildCorrelatorBank( ...
-    configuration, x_k_k_1(delayStateIndex), q);
-
-% Fixed measurement covariance matrix defined normalized by samplesTotal.
-R = (thermalNoiseVariance / samplesTotal) * ...
-    ((correlatorBank * correlatorBank') / samplesTotal);
-
-%% Signal Simulation
-[simulatedSignal, ~, ~, LOSDelay] = ...
-    gnssReceivedSignal(configuration, simulationSteps + 1);
-
-%% EKF Simulation
-for k = 1:simulationSteps
-    receivedSignal = simulatedSignal(((k - 1) * samplesTotal + 1: ...
-        k * samplesTotal));
-
-    if k > 1
-        %% EKF Update Step
-        correlatorBank = buildCorrelatorBank( ...
-            configuration, x_k_k_1(delayStateIndex), q);
-
-        z_k = (correlatorBank * receivedSignal) / samplesTotal;
-        channelWeights = x_k_k_1(tapStateIndices);
-        currentShiftedCorrelations = getShiftedCorrelationsFromBank( ...
-            correlatorBank, ...
-            x_k_k_1(delayStateIndex), ...
-            configuration, ...
-            channelTapDelays);
-        channelWeightsJacobian = currentShiftedCorrelations / samplesTotal;
-        z_hat_k_aux = channelWeightsJacobian * channelWeights;
-        z_hat_k = z_hat_k_aux;
-
-        delayJacobian = delayJacobianFunctionSimplified( ...
-            0, ...
-            channelWeights, ...
-            1 / configuration.samplingFrequency, ...
-            q, ...
-            1 / configuration.chippingFrequency, ...
-            1, ...
-            0);
-
-        jacobian = [delayJacobian channelWeightsJacobian];
-
-        PJacobianTranspose = P_k_k_1 * jacobian';
-        innovationCovariance = jacobian * PJacobianTranspose + R;
-        K_k = PJacobianTranspose * ...
-            (innovationCovariance \ eye(measurementDimension));
-
-        innovation = z_k - z_hat_k;
-        innovationRecord(:, k) = innovation;
-
-        x_k_k = x_k_k_1 + K_k * innovation;
-        x_k_k(delayStateIndex) = real(x_k_k(delayStateIndex));
-
-        P_k_k = (eye(stateDimension) - K_k * jacobian) * P_k_k_1;
-    else
-        x_k_k = x_k_k_1;
-        P_k_k = P_k_k_1;
-    end
-
-    %% EKF Projection Ahead Step
-    x_k_k_1 = x_k_k;
-    x_k_k_1(delayStateIndex) = real(x_k_k_1(delayStateIndex));
-
-    P_k_k_1 = P_k_k + Q;
-
-    delayEstimateRecord(:, k) = x_k_k(delayStateIndex);
-    channelStateRecord(:, k) = x_k_k(tapStateIndices);
+epochVector = 1:simulationSteps;
+timeMs = (epochVector - 1) * epoch * 1e3;
+chipPeriod = 1 / configuration.chippingFrequency;
+channelSummaryStartIndex = find(timeMs >= channelSummarySafeguardMs, 1);
+if isempty(channelSummaryStartIndex)
+    channelSummaryStartIndex = 1;
 end
+
+parameters.simulationSteps = simulationSteps;
+parameters.samplesPerChip = samplesPerChip;
+parameters.initialDelayErrorSamples = initialDelayErrorSamples;
+parameters.trueDelay = trueDelay;
+parameters.delayProcessNoiseStd = delayProcessNoiseStd;
+parameters.tapProcessNoiseVariance = tapProcessNoiseVariance;
+parameters.initialDelayStd = initialDelayStd;
+parameters.initialChannelStd = initialChannelStd;
+parameters.numberOfCorrelators = numberOfCorrelators;
+parameters.q = q;
+parameters.C = C;
+parameters.middleSample = middleSample;
+parameters.tapCount = tapCount;
+parameters.stateDimension = stateDimension;
+parameters.delayStateIndex = delayStateIndex;
+parameters.tapStateIndices = tapStateIndices;
+parameters.mainTapStateIndex = mainTapStateIndex;
+parameters.epoch = epoch;
+parameters.samplesTotal = samplesTotal;
+parameters.channelTapDelays = channelTapDelays;
+parameters.timeMs = timeMs;
+parameters.chipPeriod = chipPeriod;
+parameters.metricStartIndex = channelSummaryStartIndex;
+
+%% Synthetic Channel, Delay Truth, and EKF Simulation
+% (Rodrigo): I configured this synthetic causal diffuse channel model in
+% generateDissertationTrial. It is not the analog distortion-fault model
+% from Figure 12 of the Andreas article. The idea behind this is to model
+% the specular component (LOS) as 1 and a diffuse complex channel profile
+% with an exponential decaying structure. Note that this is purely
+% synthetic and would not necessarily behave as a GNSS-R measurement
+% channel.
+trial = generateDissertationTrial( ...
+    configuration, parameters, rngSeed, configuration.carrierToNoiseDensityRatio);
+result = runDissertationEkf( ...
+    trial, parameters, delayProcessNoiseStd^2, tapProcessNoiseVariance);
+
+configuration = trial.configuration;
+trueDelayEpochRecord = trial.trueDelayEpochRecord;
+truthChannelState = result.truthChannelState;
+trueDelayRecord = result.trueDelayRecord;
+delayEstimateRecord = result.delayEstimateRecord;
+channelStateRecord = result.channelStateRecord;
+innovationRecord = result.innovationRecord;
 
 %% Plot Preparation
 % (Rodrigo): I configured the plotting style; these values are not
 % simulation parameters from the Andreas Iliopoulos article.
 lineWidth = 2;
 fontSize = 13;
-epochVector = 1:simulationSteps;
-timeMs = (epochVector - 1) * epoch * 1e3;
-chipPeriod = 1 / configuration.chippingFrequency;
-truthSampleIndex = round(epochVector * samplesTotal);
-trueDelayRecord = LOSDelay(truthSampleIndex).';
 
 numberOfChannelTaps = tapCount;
 channelTapNumbers = 0:(numberOfChannelTaps - 1);
@@ -215,14 +147,6 @@ channelTapDelayTc = channelTapNumbers / samplesPerChip;
 channelPlotRows = ceil(sqrt(numberOfChannelTaps));
 channelPlotColumns = ceil(numberOfChannelTaps / channelPlotRows);
 
-% (Rodrigo): I configured a 500 ms safeguard before computing the channel
-% coefficient mean and standard deviation, so the initial convergence
-% transient is not included in the summary bars.
-channelSummarySafeguardMs = 500;
-channelSummaryStartIndex = find(timeMs >= channelSummarySafeguardMs, 1);
-if isempty(channelSummaryStartIndex)
-    channelSummaryStartIndex = 1;
-end
 channelSummaryRecord = channelStateRecord(:, channelSummaryStartIndex:end);
 
 %% Delay and Innovation Figures
@@ -285,21 +209,7 @@ plotComplexTapScatter( ...
     channelSummaryRecord, truthChannelState, channelTapNumbers, ...
     lineWidth, fontSize);
 
-%% Helper Functions
-function shiftedCorrelations = getShiftedCorrelationsFromBank( ...
-    correlatorBank, delay, configuration, channelTapDelays)
-
-samplesTotal = size(correlatorBank, 2);
-channelReplicas = zeros(numel(channelTapDelays), samplesTotal);
-for channelIndex = 1:numel(channelTapDelays)
-    channelReplicas(channelIndex, :) = getCodeReplica( ...
-        configuration, delay + channelTapDelays(channelIndex)).';
-end
-
-shiftedCorrelations = correlatorBank * channelReplicas.';
-
-end
-
+%% Plot Functions
 function plotTapHistories( ...
     figureName, timeMs, estimatedTaps, trueTaps, tapNumbers, ...
     plotRows, plotColumns, yAxisLabel, lineWidth, fontSize)
@@ -346,20 +256,28 @@ function plotCoefficientBar( ...
     plotTitle, lineWidth, fontSize)
 
 nexttile;
-barHandles = bar(tapNumbers, [estimatedValues trueValues]);
-barHandles(1).FaceColor = [0.55 0.75 0.95];
-barHandles(2).FaceColor = [0 0.5 0];
+tapPositions = 1.5 * (1:numel(tapNumbers));
+estimatedPositions = tapPositions - 0.22;
+truthPositions = tapPositions + 0.22;
+
+estimatedBar = bar(estimatedPositions, estimatedValues, 0.32);
+estimatedBar.FaceColor = [0.55 0.75 0.95];
 hold on;
-errorbar(barHandles(1).XEndPoints, estimatedValues, errorValues, ...
+truthBar = bar(truthPositions, trueValues, 0.32);
+truthBar.FaceColor = [0 0.5 0];
+errorbar(estimatedPositions, estimatedValues, errorValues, ...
     'LineStyle', 'none', 'Color', [0 0.4470 0.7410], ...
     'LineWidth', lineWidth);
 hold off;
 grid on;
-legend({"Estimated Channel Coefficients", "True Channel Coefficients"});
+legend([estimatedBar truthBar], ...
+    {"Estimated Channel Coefficients", "True Channel Coefficients"}, ...
+    "Location", "best");
 title(plotTitle);
 ylabel("Channel Coefficients");
-xticks(tapNumbers);
+xticks(tapPositions);
 xticklabels(compose("h_{%d}", tapNumbers));
+xlim([tapPositions(1) - 0.8 tapPositions(end) + 0.8]);
 set(gca, "FontSize", fontSize);
 
 end
