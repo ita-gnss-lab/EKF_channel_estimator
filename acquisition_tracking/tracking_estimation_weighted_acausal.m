@@ -3,210 +3,173 @@ clearvars; clc; close all;
 addpath(genpath(fullfile("..", "..","EKF_channel_estimator")));
 
 load config_no_doppler.mat
-rng(26437226); 
-samplesPerChip = 16;
+rng(26437226);
+samplesPerChip = 8;
 configuration.samplingFrequency = samplesPerChip * configuration.chippingFrequency;
 
-%% Stress-test truth
-configuration.carrierToNoiseDensityRatio = 50;
-configuration.dopplerProfile(1:3) = [0 0 0];
-configuration.dopplerProfile(1) = ...
-    -2*pi*configuration.carrierFrequency*1e-4;
-numberOfCausalTruthTaps = 9;
-truthTapOrder = 0:(numberOfCausalTruthTaps - 1);
-configuration.tdl_channel = 0.8 * ...
-    exp((-0.85 + 1j*pi/5) * truthTapOrder);
-%% Parameters
-simulationSteps = 5000;
+%% Simulation Setup
+simulationSteps = 500;
+configuration.carrierToNoiseDensityRatio = 54.7;
+trueDelay = 1e-4;
+configuration.applyCarrierPhase = false;
+
+numberOfCorrelators = 17;
+correlatorHalfSpan = (numberOfCorrelators - 1) / 2;
+numberOfCausalTruthTaps = correlatorHalfSpan + 1;
+diffuseTapOrder = 1:(numberOfCausalTruthTaps - 1);
+diffusePowerProfile = exp(-0.7 * diffuseTapOrder);
+configuration.tdl_channel = zeros(1, numberOfCausalTruthTaps);
+configuration.tdl_channel(1) = 1;
+configuration.tdl_channel(2:end) = 0.8 * sqrt(diffusePowerProfile) .* ...
+    (randn(1, numel(diffuseTapOrder)) + ...
+    1j * randn(1, numel(diffuseTapOrder))) / sqrt(2);
+
+%% Configuration Flags
 useTapEnergyConstraint = false;
-useAcausalTaps = true;
+useAcausalTaps = false;
 usePerfectFrozenTruthState = false;
-constraint_noise = 10^(-2.63);%10.^[-2.63 -3.44 -4 -4.28 -4.49 -4.63 -4.85 -5.2 -5.37 -5.88];
-q = numberOfCausalTruthTaps;
+isAdaptiveMeasurementCovariance = false;
+isFixedDelayJacobian = true;
+isAdaptiveStateCovariance = false;
+configuration.addNoise = true;
+plotMeasures = false;
+
+%% Parameters
+constraint_noise = 10^(-2.63);
+q = correlatorHalfSpan;
 C = 2*q + 1;
 middleSample = q + 1;
-acausalTapStateIndices = 5:(4+q);
+tapCount = 2*q + 1;
+stateDimension = 1 + tapCount;
+delayStateIndex = 1;
+tapStateIndices = 2:stateDimension;
+mainTapStateIndex = q + 2;
+acausalTapStateIndices = 2:(q + 1);
 acausalTapChannelIndices = 1:q;
 epoch = configuration.totalChips / configuration.chippingFrequency;
 configuration.correlatorHalfSpan = q;
-samplesTotal = epoch*configuration.samplingFrequency;
-timeSupport = (0:(samplesTotal - 1)).' * (1/configuration.samplingFrequency);
-beta = -1 / (2 * pi * configuration.carrierFrequency);
-WienerStatesSelection = 1:4;
-trueDelay = -configuration.dopplerProfile(1) / ...
-    (2*pi*configuration.carrierFrequency);
+samplesTotal = round(epoch * configuration.samplingFrequency);
+delayProcessNoiseStd = 0.005 / configuration.chippingFrequency;
+trueDelayEpochRecord = trueDelay + ...
+    cumsum([0 delayProcessNoiseStd * randn(1, simulationSteps)]);
+configuration.codeDelay = repelem(trueDelayEpochRecord, samplesTotal).';
+channelTapDelays = (-q:q) / configuration.samplingFrequency;
+delayJacobianStep = 1e-3 / configuration.samplingFrequency;
+adaptiveStateCovarianceWindow = 50;
 initialDelayErrorSamples = 0;
-initialDelayEstimate = trueDelay + ...
+initialDelayEstimate = trueDelayEpochRecord(1) + ...
     initialDelayErrorSamples / configuration.samplingFrequency;
-initialDelayError = trueDelay - initialDelayEstimate;
-delayErrorStdSamples = max(2, abs(initialDelayErrorSamples));
+initialDelayStd = 0.5 / configuration.chippingFrequency;
 
-truthChannelAcausal = zeros(2*q + 1, 1);
+truthChannelAcausal = zeros(tapCount, 1);
 numberOfTruthTaps = min(numel(configuration.tdl_channel), q + 1);
 truthChannelAcausal(q + 1:q + numberOfTruthTaps) = ...
     configuration.tdl_channel(1:numberOfTruthTaps).';
 truthChannelState = truthChannelAcausal;
 
-%% Covariances 
-% Convert CN0 from dB-Hz to linear scale
+%% Covariances
 carrierToNoiseRatioLinear = 10^(configuration.carrierToNoiseDensityRatio / 10);
-% Compute the noise variance
-thermalNoiseVarianceSquared = configuration.samplingFrequency / carrierToNoiseRatioLinear;
-sigma2Vec = [1e5 1e4 0 0 1e-2];
-Q = getStateCovarianceMatrix_acausal(...
-    sigma2Vec, ...
-    epoch, ...
-    beta, ...
-    q);
+thermalNoiseVariance = configuration.samplingFrequency / carrierToNoiseRatioLinear;
+
+delayProcessNoiseVariance = delayProcessNoiseStd^2;
+tapProcessNoiseVariance = 1e-4^2;
+channelProcessCovariance = tapProcessNoiseVariance * eye(tapCount);
+channelProcessCovariance(q + 1, q + 1) = ...
+    10 * channelProcessCovariance(q + 1, q + 1);
+QBase = blkdiag(delayProcessNoiseVariance, channelProcessCovariance);
 if ~useAcausalTaps
-    Q(acausalTapStateIndices, :) = 0;
-    Q(:, acausalTapStateIndices) = 0;
+    QBase(acausalTapStateIndices, :) = 0;
+    QBase(:, acausalTapStateIndices) = 0;
 end
 if usePerfectFrozenTruthState
-    Q(:) = 0;
+    QBase(:) = 0;
 end
-correlatorBank = buildCorrelatorBank(configuration, 0, q);
-
-R  = (thermalNoiseVarianceSquared / samplesTotal) * ...
-        (correlatorBank * correlatorBank.');
-if useTapEnergyConstraint
-    R = [R zeros(2*q+1, 1); zeros(1, 2*q+1) constraint_noise];
-end
+Q = QBase;
 
 %% State History Vectors
-LQGStateRecord = zeros(4, simulationSteps);
-errorStateRecord = zeros(4, simulationSteps);
-channelStateRecord = zeros(2*q + 1, simulationSteps);
+delayEstimateRecord = zeros(1, simulationSteps);
+channelStateRecord = zeros(tapCount, simulationSteps);
 measurementDimension = C + double(useTapEnergyConstraint);
 innovationRecord = zeros(measurementDimension, simulationSteps);
-kalmanGainRecord = zeros(4 + 2*q + 1, measurementDimension, simulationSteps);
+kalmanGainRecord = zeros(stateDimension, measurementDimension, simulationSteps);
 constraintRecord = zeros(1, simulationSteps);
-
-%% Cost Functions
-% I4 = eye(4);
-% 
-% % Bryson-style targets (tune as needed)
-% sig_tau  = 1e-4;    % s
-% sig_phi  = 2e-3;    % rad
-% sig_nu   = 1e-2;    % rad/
-% sig_nud  = 2e-1;    % rad/s^2
-% 
-% T_e_0 = diag([1/sig_tau^2, 1/sig_phi^2, 1/sig_nu^2, 1/sig_nud^2]);
-% T_u_0 = 1e-2*eye(4);  % small => fast
-% 
-% kappa = 5; % speed knob
-% T_e = kappa*T_e_0;
-% T_u = T_u_0/kappa;
-
-relation = 10;
-delayCostScale = abs(beta);
-T_e = relation * diag([delayCostScale, 1, 1/epoch, 1/epoch^2]);
-T_u = diag([delayCostScale, 1, 1/epoch, 1/epoch^2]);
-
-%% Transition Matrices
-[F_W, F_H] = getModelTransitionMatrix_acausal(epoch, q, beta);
-
-%% Coupling Matrix for Control Signal
-B_LQG = eye(4);
-
-%% IDARE Solution
-[~, L, ~] = idare(F_W, B_LQG, T_e, T_u, [], []);
-
-%% Full transition matrix
-F = blkdiag(F_W, F_H);
-
+adaptiveStateCovarianceErrorMemory = ...
+    zeros(measurementDimension, adaptiveStateCovarianceWindow);
 
 %% Initialization
-% NOTE: I changed from x_k_k to x_k_k_1, because, in fact the
-% initialization uses x[1|0].
-x_k_k_1 = zeros(4 + (2*q+1), 1);
-main_tap = false(size(x_k_k_1));
-main_tap(4 + q + 1) = true;
-x_k_k_1(main_tap) = 1;
-other_taps = true(size(x_k_k_1));
-other_taps(1:4) = false;
-other_taps(main_tap) = false;
-x_k_k_1(other_taps) = 0;
+x_k_k_1 = zeros(stateDimension, 1);
+x_k_k_1(delayStateIndex) = initialDelayEstimate;
+x_k_k_1(mainTapStateIndex) = 1;
+
+otherTapMask = true(size(x_k_k_1));
+otherTapMask([delayStateIndex mainTapStateIndex]) = false;
+
 if usePerfectFrozenTruthState
-    x_k_k_1(1:4) = 0;
-    x_k_k_1(5:end) = truthChannelState;
+    x_k_k_1(delayStateIndex) = trueDelayEpochRecord(1);
+    x_k_k_1(tapStateIndices) = truthChannelState;
 end
 
-% NOTE: I changed from x_k_k to P_k_k_1, because, in fact the
-% initialization uses P[1|0].  1e-1, 0, (50)^2/12, (0.1)^2/12,
-delayErrorStd = delayErrorStdSamples / configuration.samplingFrequency;
-phaseErrorStd = 0;
-channelCovarianceMatrix = 1e-1 * eye(2*q + 1);
-channelCovarianceMatrix(q + 1, q + 1) = 1e-0;
+initialChannelCovarianceMatrix = 0.5^2 * eye(tapCount);
 if usePerfectFrozenTruthState
-    channelCovarianceMatrix(:) = 0;
+    initialChannelCovarianceMatrix(:) = 0;
 end
 if ~useAcausalTaps
-    channelCovarianceMatrix(acausalTapChannelIndices, :) = 0;
-    channelCovarianceMatrix(:, acausalTapChannelIndices) = 0;
+    initialChannelCovarianceMatrix(acausalTapChannelIndices, :) = 0;
+    initialChannelCovarianceMatrix(:, acausalTapChannelIndices) = 0;
 end
-P_k_k_1 = blkdiag( ...
-    delayErrorStd^2, ...
-    10*phaseErrorStd^2, ...
-    0, ...
-    0, ...
-    channelCovarianceMatrix);
-% P_k_k_1 = blkdiag(1e-1, 0, 0, 0, zeros(1 + q));
+P_k_k_1 = blkdiag(initialDelayStd^2, initialChannelCovarianceMatrix);
 
-initialPhaseError = phaseErrorStd;
-x_LQG_k = [initialDelayEstimate, ...
-    configuration.dopplerProfile(1) + initialPhaseError, ...
-    2*pi*configuration.dopplerProfile(2), ...
-    2*pi*configuration.dopplerProfile(3)].';
-
-u_LQG = L * x_k_k_1(WienerStatesSelection);
- u_LQG(2) = 0;
-u_LQG(3:4) = 0;
+correlatorBank = buildCorrelatorBank( ...
+    configuration, x_k_k_1(delayStateIndex), q);
+R = (thermalNoiseVariance / samplesTotal) * ...
+    ((correlatorBank * correlatorBank') / samplesTotal);
+if useTapEnergyConstraint
+    R = [R zeros(C, 1); zeros(1, C) constraint_noise];
+end
 
 %% Simulate Signal
-configuration.addNoise = true;
-[simulatedSignal, ~, LOSPhase, LOSDelay] = gnssReceivedSignal(configuration, simulationSteps + 1);
+[simulatedSignal, ~, ~, LOSDelay] = gnssReceivedSignal(configuration, simulationSteps + 1);
 
 %% Simulation
-plotMeasures = true;
 correlatorTaps = -q:1:q;
-% NOTE: (Rodrigo): Changed the main loop to match algorithm 1 of my report.
-for k = 1 : simulationSteps
-    %% Signal 
+for k = 1:simulationSteps
     receivedSignal = simulatedSignal(((k - 1) * samplesTotal + 1: k * samplesTotal));
 
-    %% LQG Controller
-    % Update LQG state 
-    x_LQG_k = F_W * x_LQG_k + B_LQG * u_LQG;
-    % x_LQG_k(2) = configuration.dopplerProfile(1);
-    % x_LQG_k(3:4) = [
-    %     2*pi*configuration.dopplerProfile(2);
-    %     2*pi*configuration.dopplerProfile(3)];
-
-    LQGStateRecord(:, k) = x_LQG_k(1:4);
-
-    % Carrier Wipe-Off
-    phi_T = x_LQG_k(2) + x_LQG_k(3) * timeSupport + 0.5 * x_LQG_k(4) * timeSupport.^2;
-    d_k = exp(1j * phi_T);
-    wipedSignal = receivedSignal .* conj(d_k);
-
-    %% Kalman filter
     if k > 1
-        % EKF's Update Step
-        correlatorBank = buildCorrelatorBank(configuration, x_LQG_k(1), q);
-        z_k = correlatorBank * wipedSignal / samplesTotal;
-        constraint_value = sum(abs(x_k_k_1(other_taps)).^2)/((q-1)*abs(x_k_k_1(main_tap))^2);
-        z_hat_k_aux = measurementFunction_acausal( ...
-            x_k_k_1, configuration, q, x_LQG_k(1)) / samplesTotal;
+        %% EKF Update Step
+        correlatorBank = buildCorrelatorBank( ...
+            configuration, x_k_k_1(delayStateIndex), q);
+        if isAdaptiveMeasurementCovariance
+            R = (thermalNoiseVariance / samplesTotal) * ...
+                ((correlatorBank * correlatorBank') / samplesTotal);
+            if useTapEnergyConstraint
+                R = [R zeros(C, 1); zeros(1, C) constraint_noise];
+            end
+        end
+
+        z_k = (correlatorBank * receivedSignal) / samplesTotal;
+        channelWeights = x_k_k_1(tapStateIndices);
+        currentShiftedCorrelations = getShiftedCorrelationsFromBank( ...
+            correlatorBank, ...
+            x_k_k_1(delayStateIndex), ...
+            configuration, ...
+            channelTapDelays);
+        channelWeightsJacobian = ...
+            currentShiftedCorrelations / samplesTotal;
+        z_hat_k_aux = channelWeightsJacobian * channelWeights;
         z_hat_k = z_hat_k_aux;
         if useTapEnergyConstraint
+            mainTapValue = x_k_k_1(mainTapStateIndex);
+            mainTapEnergy = abs(mainTapValue)^2;
+            otherTapEnergy = sum(abs(x_k_k_1(otherTapMask)).^2);
+            constraint_value = ...
+                otherTapEnergy / ((q - 1) * mainTapEnergy);
             z_k = [z_k; 0];
             z_hat_k = [z_hat_k; constraint_value];
+            constraintRecord(:, k) = constraint_value;
         end
-        constraintRecord(:, k) = constraint_value;
-        
+
         if plotMeasures
-            % ---- Plot routine -----
             plot(correlatorTaps, real(z_k(1:C)));
             hold on;
             plot(correlatorTaps, real(z_hat_k(1:C)));
@@ -223,270 +186,223 @@ for k = 1 : simulationSteps
                 'Interpreter','latex');
             pause(0.01);
         end
-        
-        % Compute Jacobian
-        % Delay term now follows Φ_pp(ετ + (l - m)Ts) as in the analytical model.
-        delayJacobian = delayJacobianFunctionSimplified_acausal( ...
-            x_k_k_1(1), ...
-            x_k_k_1(5:end), ...
-            1 / configuration.samplingFrequency, ...
-            q, ...
-            1 / configuration.chippingFrequency, ...
-            exp(1j * x_k_k_1(2)) ...
-        );
-        phaseJacobian = 1j * z_hat_k_aux;
-        dopplerJacobian = zeros(2*q + 1, 2);
-        channelOrder = (numel(x_k_k_1(5:end)) - 1)/2;
-        channelWeightsJacobian = exp(1j * x_k_k_1(2)) .* ...
-            getShiftedCorrelations_acausal( ...
-                x_k_k_1(1), q, configuration, channelOrder, x_LQG_k(1)) / ...
-            samplesTotal;
-        % todo - add the jacobian of the constraint
-        LOSParcel = -x_k_k_1(main_tap)*sum(abs(x_k_k_1(other_taps)).^2)/(abs(x_k_k_1(main_tap))^2);
-        tapsParcel = (2/((q-1)*abs(x_k_k_1(main_tap))^2))*[x_k_k_1(4+1:4+q);LOSParcel;x_k_k_1(4+q+2:end)];
-        constraintLine = [0 0 0 0 tapsParcel'];
-        jacobian = [delayJacobian ...
-            phaseJacobian ...
-            dopplerJacobian ...
-            channelWeightsJacobian];
+
+        if isFixedDelayJacobian
+            delayJacobian = delayJacobianFunctionSimplified_acausal( ...
+                0, ...
+                channelWeights, ...
+                1 / configuration.samplingFrequency, ...
+                q, ...
+                1 / configuration.chippingFrequency, ...
+                1);
+        else
+            delayPlusCorrelations = getShiftedCorrelationsFromBank( ...
+                correlatorBank, ...
+                x_k_k_1(delayStateIndex) + delayJacobianStep, ...
+                configuration, ...
+                channelTapDelays);
+            delayMinusCorrelations = getShiftedCorrelationsFromBank( ...
+                correlatorBank, ...
+                x_k_k_1(delayStateIndex) - delayJacobianStep, ...
+                configuration, ...
+                channelTapDelays);
+            delayJacobian = ...
+                ((delayPlusCorrelations - delayMinusCorrelations) * ...
+                channelWeights) / (2 * delayJacobianStep * samplesTotal);
+        end
+
+        jacobian = [delayJacobian channelWeightsJacobian];
         if useTapEnergyConstraint
+            losParcel = ...
+                -mainTapValue * otherTapEnergy / mainTapEnergy;
+            tapsParcel = ...
+                (2 / ((q - 1) * mainTapEnergy)) * ...
+                [x_k_k_1(2:q+1); losParcel; x_k_k_1(q+3:end)];
+            constraintLine = [0 tapsParcel'];
             jacobian = [jacobian; constraintLine];
         end
-        
-        % Compute Kalman Gain
-        K_k = P_k_k_1 * jacobian'...
-            *((jacobian * P_k_k_1 * jacobian' + R) \ eye(measurementDimension));
-        kalmanGainRecord(:,:, k) = K_k;
 
-        % Obtain the innovation
+        PJacobianTranspose = P_k_k_1 * jacobian';
+        innovationCovariance = jacobian * PJacobianTranspose + R;
+        K_k = PJacobianTranspose * ...
+            (innovationCovariance \ eye(measurementDimension));
+        kalmanGainRecord(:, :, k) = K_k;
+
         innovation = z_k - z_hat_k;
         innovationRecord(:, k) = innovation;
 
-        % EKF's state update
         x_k_k = x_k_k_1 + K_k * innovation;
-        x_k_k(WienerStatesSelection) = real(x_k_k(WienerStatesSelection));
-        % x_k_k(2) = 0;
-        x_k_k(3:4) = 0;
+        x_k_k(delayStateIndex) = real(x_k_k(delayStateIndex));
         if ~useAcausalTaps
             x_k_k(acausalTapStateIndices) = 0;
         end
- 
-        % EKF's covariance matrix update
-        P_k_k = (eye(2*q + 1 + 4) - K_k*jacobian) * P_k_k_1;
+
+        if isAdaptiveStateCovariance && ~usePerfectFrozenTruthState
+            adaptiveStateCovarianceError = ...
+                innovation - jacobian * (x_k_k - x_k_k_1);
+            adaptiveStateCovarianceErrorMemory = ...
+                [adaptiveStateCovarianceError ...
+                adaptiveStateCovarianceErrorMemory(:, 1:end-1)];
+            if k > adaptiveStateCovarianceWindow
+                innovationErrorCovariance = ...
+                    (adaptiveStateCovarianceErrorMemory * ...
+                    adaptiveStateCovarianceErrorMemory') / ...
+                    adaptiveStateCovarianceWindow;
+                Q = K_k * innovationErrorCovariance * K_k';
+            end
+        end
+
+        P_k_k = (eye(stateDimension) - K_k * jacobian) * P_k_k_1;
         if ~useAcausalTaps
+            x_k_k(acausalTapStateIndices) = 0;
             P_k_k(acausalTapStateIndices, :) = 0;
             P_k_k(:, acausalTapStateIndices) = 0;
         end
-        
-        % LQG control vector computation
-        u_LQG = L * x_k_k(WienerStatesSelection);
-        % u_LQG(2) = 0;
-        u_LQG(3:4) = 0;
     else
-        % Initialization procedure
         x_k_k = x_k_k_1;
         P_k_k = P_k_k_1;
     end
 
-    % EKF's Projection Ahead Step
-    x_k_k_1 = F * x_k_k;  
-    x_k_k_1(WienerStatesSelection) = real(x_k_k_1(WienerStatesSelection));
-    % x_k_k_1(2) = 0;
-    x_k_k_1(3:4) = 0;
+    %% EKF Projection Ahead Step
+    x_k_k_1 = x_k_k;
+    x_k_k_1(delayStateIndex) = real(x_k_k_1(delayStateIndex));
     if ~useAcausalTaps
         x_k_k_1(acausalTapStateIndices) = 0;
     end
-    P_k_k_1 = F * P_k_k * F' + Q;
+    P_k_k_1 = P_k_k + Q;
     if ~useAcausalTaps
         P_k_k_1(acausalTapStateIndices, :) = 0;
         P_k_k_1(:, acausalTapStateIndices) = 0;
     end
 
-    errorStateRecord(:, k) = x_k_k(1:4);
-    channelStateRecord(:, k) = x_k_k(5:end);
-
+    delayEstimateRecord(:, k) = x_k_k(delayStateIndex);
+    channelStateRecord(:, k) = x_k_k(tapStateIndices);
 end
-%% Plots
 
+%% Plots
 lineWidth = 2;
 fontSize = 13;
 
 epochVector = 1:simulationSteps;
+timeMs = (epochVector - 1) * epoch * 1e3;
+chipPeriod = 1 / configuration.chippingFrequency;
 truthSampleIndex = round(epochVector * samplesTotal);
 trueDelayRecord = LOSDelay(truthSampleIndex).';
-truePhaseRecord = LOSPhase(truthSampleIndex).';
-trueDopplerRecord = 2*pi*configuration.dopplerProfile(2) * ...
-    ones(1, simulationSteps);
-trueDelayErrorRecord = trueDelayRecord - LQGStateRecord(1, :);
-truePhaseErrorRecord = truePhaseRecord - LQGStateRecord(2, :);
-trueDopplerErrorRecord = trueDopplerRecord - LQGStateRecord(3, :);
+trueDelayEstimationErrorRecord = trueDelayRecord - delayEstimateRecord;
 
-truthChannelAcausal = zeros(2*q + 1, 1);
-numberOfTruthTaps = min(numel(configuration.tdl_channel), q + 1);
-truthChannelAcausal(q + 1:q + numberOfTruthTaps) = ...
-    configuration.tdl_channel(1:numberOfTruthTaps).';
-truthChannelState = truthChannelAcausal;
-forwardTapIndices = (q + 1):(2*q + 1);
+forwardTapIndices = (q + 1):tapCount;
 numberOfForwardTaps = numel(forwardTapIndices);
+forwardTapNumbers = 0:(numberOfForwardTaps - 1);
+forwardTapDelayTc = forwardTapNumbers / samplesPerChip;
+estimatedForwardChannel = channelStateRecord(forwardTapIndices, :);
+estimatedForwardChannelMean = mean(estimatedForwardChannel, 2);
+estimatedForwardChannelRealStd = std(real(estimatedForwardChannel), 0, 2);
+estimatedForwardChannelImagStd = std(imag(estimatedForwardChannel), 0, 2);
+trueForwardChannel = truthChannelState(forwardTapIndices);
 channelPlotRows = ceil(sqrt(numberOfForwardTaps));
 channelPlotColumns = ceil(numberOfForwardTaps / channelPlotRows);
 
-%Observe the STD of the innovation sequence time series\
-innovationStdRecord = std(innovationRecord(1:C,:),1,1);
+innovationStdRecord = std(innovationRecord(1:C, :), 1, 1);
 figure(Name="STD of the innovations", NumberTitle="off");
 hold on;
-plot(epochVector, innovationStdRecord, 'LineWidth', lineWidth);
-plot(epochVector, zeros(1, simulationSteps), '--', 'LineWidth', lineWidth);
+plot(timeMs, innovationStdRecord, 'LineWidth', lineWidth);
+plot(timeMs, zeros(1, simulationSteps), '--', 'LineWidth', lineWidth);
 legend({"Innovation STD", "Truth"});
 ylabel("Standard deviation of the innovations");
-xlabel("Epochs (Simulation Steps)");
+xlabel("Time [ms]");
 hold off;
 
-% Observe the innovation sequence time series
 figure(Name="Middle tap of the innovation sequence", NumberTitle="off");
 hold on;
-plot(epochVector, real(innovationRecord(middleSample,:)), 'LineWidth', lineWidth);
-plot(epochVector, imag(innovationRecord(middleSample,:)), 'LineWidth', lineWidth);
-plot(epochVector, zeros(1, simulationSteps), '--', 'LineWidth', lineWidth);
+plot(timeMs, real(innovationRecord(middleSample, :)), 'LineWidth', lineWidth);
+plot(timeMs, imag(innovationRecord(middleSample, :)), 'LineWidth', lineWidth);
+plot(timeMs, zeros(1, simulationSteps), '--', 'LineWidth', lineWidth);
 legend({"Real", "Imaginary", "Truth"});
 ylabel("Innovation sequence of the middle tap");
-xlabel("Epochs (Simulation Steps)");
+xlabel("Time [ms]");
 hold off;
 
 figure(Name="Delay Estimation", NumberTitle="off");
 hold on;
-plot(epochVector, LQGStateRecord(1,:), 'LineWidth', lineWidth);
-plot(epochVector, trueDelayRecord, '--', 'LineWidth', lineWidth);
-legend({"LQG's estimated delay", "True delay"});
-ylabel("Delay estimate");
-xlabel("Epochs (Simulation Steps)");
+plot(timeMs, (delayEstimateRecord - trueDelayRecord(1)) / chipPeriod, ...
+    'LineWidth', lineWidth);
+plot(timeMs, (trueDelayRecord - trueDelayRecord(1)) / chipPeriod, ...
+    '--', 'LineWidth', lineWidth);
+legend({"EKF's estimated delay", "True delay"});
+ylabel("LOS Delay [T_c]");
+xlabel("Time [ms]");
 hold off;
-
-figure(Name="Delay Error State", NumberTitle="off");
-hold on;
-plot(errorStateRecord(1, :), 'LineWidth', lineWidth);
-plot(epochVector, trueDelayErrorRecord, '--', 'LineWidth', lineWidth);
-plot(epochVector, zeros(1, simulationSteps), ':', 'LineWidth', lineWidth);
-legend({"EKF's estimated delay error", "True delay error", "Zero line"});
-ylabel("Delay error estimate");
-xlabel("Epochs (Simulation Steps)");
-hold off;
-
-figure(Name="Phase Estimation", NumberTitle="off");
-hold on;
-plot(epochVector, LQGStateRecord(2,:), 'LineWidth', lineWidth);
-plot(epochVector, truePhaseRecord, '--', 'LineWidth', lineWidth);
-legend({"LQG's estimated phase", "True Phase"});
-ylabel("Phase estimate");
-xlabel("Epochs (Simulation Steps)");
-hold off;
-
-figure(Name="Phase Error State", NumberTitle="off");
-hold on;
-plot(errorStateRecord(2, :), 'LineWidth', lineWidth);
-plot(epochVector, truePhaseErrorRecord, '--', 'LineWidth', lineWidth);
-plot(epochVector, zeros(1, simulationSteps), ':', 'LineWidth', lineWidth);
-legend({"EKF's estimated phase error", "True phase error", "Zero line"});
-ylabel("Phase error estimate");
-xlabel("Epochs (Simulation Steps)");
-hold off;
-
-figure(Name="Doppler Estimation", NumberTitle="off");
-hold on;
-plot(epochVector, LQGStateRecord(3,:), 'LineWidth', lineWidth);
-plot(epochVector, trueDopplerRecord, '--', 'LineWidth', lineWidth);
-legend({"LQG's estimated Doppler frequency", "True Doppler frequency"});
-ylabel("Doppler estimate");
-xlabel("Epochs (Simulation Steps)");
-hold off;
-
-figure(Name="Doppler Error State", NumberTitle="off");
-hold on;
-plot(errorStateRecord(3, :), 'LineWidth', lineWidth);
-plot(epochVector, trueDopplerErrorRecord, '--', 'LineWidth', lineWidth);
-plot(epochVector, zeros(1, simulationSteps), ':', 'LineWidth', lineWidth);
-ylabel("Doppler error estimate");
-xlabel("Epochs (Simulation Steps)");
-legend({"EKF's estimated Doppler error", "True Doppler error", "Zero line"});
-hold off;
-
-figure(Name="Real Kalman Gain Elements", NumberTitle="off");
-hold on;
-for i = 1:size(kalmanGainRecord, 1)
-    for j = 1:size(kalmanGainRecord, 2)
-        plot(epochVector, squeeze(real(kalmanGainRecord(i, j, :))), 'DisplayName', sprintf('K_{%d,%d}', i, j), 'LineWidth', lineWidth);
-    end
-end
-legend show;
-ylabel("Real Kalman Gain Elements");
-xlabel("Epochs (Simulation Steps)");
-set(gca, "FontSize", fontSize);
-hold off;
-
-figure(Name="Imaginary Kalman Gain Elements", NumberTitle="off");
-hold on;
-for i = 1:size(kalmanGainRecord, 1)
-    for j = 1:size(kalmanGainRecord, 2)
-        plot(epochVector, squeeze(imag(kalmanGainRecord(i, j, :))), 'DisplayName', sprintf('K_{%d,%d}', i, j), 'LineWidth', lineWidth);
-    end
-end
-legend show;
-ylabel("Imaginary Kalman Gain Elements");
-xlabel("Epochs (Simulation Steps)");
-set(gca, "FontSize", fontSize);
-hold off;
-
-% figure(Name="Channel Weights Over Time", NumberTitle="off");
+%
+% figure(Name="Real Kalman Gain Elements", NumberTitle="off");
 % hold on;
-% for i = 1:3
-%     plot(abs(channelStateRecord(i, :)), 'LineWidth', lineWidth);
+% for i = 1:size(kalmanGainRecord, 1)
+%     for j = 1:size(kalmanGainRecord, 2)
+%         plot(timeMs, squeeze(real(kalmanGainRecord(i, j, :))), ...
+%             'DisplayName', sprintf('K_{%d,%d}', i, j), ...
+%             'LineWidth', lineWidth);
+%     end
 % end
-% yyaxis right
-% plot(constraintRecord, 'LineWidth', lineWidth);
-% ylabel("Constraint");
-% xlabel("Epochs (Simulation Steps)");
+% legend show;
+% ylabel("Real Kalman Gain Elements");
+% xlabel("Time [ms]");
+% set(gca, "FontSize", fontSize);
+% hold off;
+%
+% figure(Name="Imaginary Kalman Gain Elements", NumberTitle="off");
+% hold on;
+% for i = 1:size(kalmanGainRecord, 1)
+%     for j = 1:size(kalmanGainRecord, 2)
+%         plot(timeMs, squeeze(imag(kalmanGainRecord(i, j, :))), ...
+%             'DisplayName', sprintf('K_{%d,%d}', i, j), ...
+%             'LineWidth', lineWidth);
+%     end
+% end
+% legend show;
+% ylabel("Imaginary Kalman Gain Elements");
+% xlabel("Time [ms]");
+% set(gca, "FontSize", fontSize);
 % hold off;
 
-figure(Name="secondary taps", NumberTitle="off");
-hold on;
-for i = 1:q
-    tapIndex = i + q + 1;
-    plot(abs(channelStateRecord(tapIndex, :)), ...
-        'LineWidth', lineWidth, ...
-        'DisplayName', sprintf("Estimate tap %+d", i));
-    plot(epochVector, abs(truthChannelState(tapIndex)) * ...
-        ones(1, simulationSteps), '--', ...
-        'LineWidth', lineWidth, ...
-        'DisplayName', sprintf("Truth tap %+d", i));
-end
-legend show;
-ylabel("Magnitude");
-xlabel("Epochs (Simulation Steps)");
-hold off;
-
-figure(Name="main tap", NumberTitle="off");
-hold on; 
-plot(real(channelStateRecord(q+1, :)), 'LineWidth', lineWidth);
-plot(epochVector, real(truthChannelState(q+1)) * ...
-    ones(1, simulationSteps), '--', 'LineWidth', lineWidth);
-legend({"Estimate", "Truth"});
-ylabel("Real");
-xlabel("Epochs (Simulation Steps)");
-hold off;
+% figure(Name="secondary taps", NumberTitle="off");
+% hold on;
+% for i = 1:q
+%     tapIndex = i + q + 1;
+%     plot(timeMs, abs(channelStateRecord(tapIndex, :)), ...
+%         'LineWidth', lineWidth, ...
+%         'DisplayName', sprintf("Estimate tap %+d", i));
+%     plot(timeMs, abs(truthChannelState(tapIndex)) * ...
+%         ones(1, simulationSteps), '--', ...
+%         'LineWidth', lineWidth, ...
+%         'DisplayName', sprintf("Truth tap %+d", i));
+% end
+% legend show;
+% ylabel("Magnitude");
+% xlabel("Time [ms]");
+% hold off;
+%
+% figure(Name="main tap", NumberTitle="off");
+% hold on;
+% plot(timeMs, real(channelStateRecord(q+1, :)), 'LineWidth', lineWidth);
+% plot(timeMs, real(truthChannelState(q+1)) * ...
+%     ones(1, simulationSteps), '--', 'LineWidth', lineWidth);
+% legend({"Estimate", "Truth"});
+% ylabel("Real");
+% xlabel("Time [ms]");
+% hold off;
 
 figure(Name="Real Channel Tap Estimates", NumberTitle="off");
 tiledlayout(channelPlotRows, channelPlotColumns);
 for tapIndex = forwardTapIndices
     nexttile;
     hold on;
-    plot(epochVector, real(channelStateRecord(tapIndex, :)), ...
+    plot(timeMs, real(channelStateRecord(tapIndex, :)), ...
         'LineWidth', lineWidth);
-    plot(epochVector, real(truthChannelState(tapIndex)) * ...
+    plot(timeMs, real(truthChannelState(tapIndex)) * ...
         ones(1, simulationSteps), '--', 'LineWidth', lineWidth);
     hold off;
     title(sprintf("Tap %+d", tapIndex - q - 1));
     ylabel("Real");
-    xlabel("Epochs");
+    xlabel("Time [ms]");
     set(gca, "FontSize", fontSize);
 end
 legend({"Estimate", "Truth"});
@@ -496,17 +412,106 @@ tiledlayout(channelPlotRows, channelPlotColumns);
 for tapIndex = forwardTapIndices
     nexttile;
     hold on;
-    plot(epochVector, imag(channelStateRecord(tapIndex, :)), ...
+    plot(timeMs, imag(channelStateRecord(tapIndex, :)), ...
         'LineWidth', lineWidth);
-    plot(epochVector, imag(truthChannelState(tapIndex)) * ...
+    plot(timeMs, imag(truthChannelState(tapIndex)) * ...
         ones(1, simulationSteps), '--', 'LineWidth', lineWidth);
     hold off;
     title(sprintf("Tap %+d", tapIndex - q - 1));
     ylabel("Imag");
-    xlabel("Epochs");
+    xlabel("Time [ms]");
     set(gca, "FontSize", fontSize);
 end
 legend({"Estimate", "Truth"});
+
+figure(Name="Channel Coefficient Summary", NumberTitle="off");
+tiledlayout(1, 2);
+
+nexttile;
+realBar = bar(forwardTapNumbers, ...
+    [real(estimatedForwardChannelMean) real(trueForwardChannel)]);
+realBar(1).FaceColor = [0.55 0.75 0.95];
+realBar(2).FaceColor = [0 0.5 0];
+hold on;
+errorbar(realBar(1).XEndPoints, real(estimatedForwardChannelMean), ...
+    estimatedForwardChannelRealStd, 'LineStyle', 'none', ...
+    'Color', [0 0.4470 0.7410], 'LineWidth', lineWidth);
+hold off;
+grid on;
+legend({"Estimated Channel Coefficients", ...
+    "True Channel Coefficients"});
+title("Real Channel Coefficients");
+ylabel("Channel Coefficients");
+xticks(forwardTapNumbers);
+xticklabels(compose("h_{%d}", forwardTapNumbers));
+set(gca, "FontSize", fontSize);
+
+nexttile;
+imagBar = bar(forwardTapNumbers, ...
+    [imag(estimatedForwardChannelMean) imag(trueForwardChannel)]);
+imagBar(1).FaceColor = [0.55 0.75 0.95];
+imagBar(2).FaceColor = [0 0.5 0];
+hold on;
+errorbar(imagBar(1).XEndPoints, imag(estimatedForwardChannelMean), ...
+    estimatedForwardChannelImagStd, 'LineStyle', 'none', ...
+    'Color', [0 0.4470 0.7410], 'LineWidth', lineWidth);
+hold off;
+grid on;
+legend({"Estimated Channel Coefficients", ...
+    "True Channel Coefficients"});
+title("Imaginary Channel Coefficients");
+ylabel("Channel Coefficients");
+xticks(forwardTapNumbers);
+xticklabels(compose("h_{%d}", forwardTapNumbers));
+set(gca, "FontSize", fontSize);
+
+figure(Name="Channel Impulse Response History", NumberTitle="off");
+[timeGrid, tapDelayGrid] = meshgrid(timeMs, forwardTapDelayTc);
+tiledlayout(1, 2);
+
+nexttile;
+hold on;
+surf(timeGrid, tapDelayGrid, real(estimatedForwardChannel), ...
+    'EdgeColor', 'none');
+surf(timeGrid, tapDelayGrid, ...
+    repmat(real(trueForwardChannel), 1, simulationSteps), ...
+    'FaceColor', [0.5 0.5 0.5], 'FaceAlpha', 0.85, ...
+    'EdgeColor', 'none');
+hold off;
+grid on;
+colormap(turbo);
+colorbar;
+view(42, 28);
+camproj("perspective");
+axis tight;
+legend({"Estimate", "Truth"});
+title("Real Channel Impulse Response");
+xlabel("Time [ms]");
+ylabel("Delay [T_c]");
+zlabel("Real");
+set(gca, "FontSize", fontSize);
+
+nexttile;
+hold on;
+surf(timeGrid, tapDelayGrid, imag(estimatedForwardChannel), ...
+    'EdgeColor', 'none');
+surf(timeGrid, tapDelayGrid, ...
+    repmat(imag(trueForwardChannel), 1, simulationSteps), ...
+    'FaceColor', [0.5 0.5 0.5], 'FaceAlpha', 0.85, ...
+    'EdgeColor', 'none');
+hold off;
+grid on;
+colormap(turbo);
+colorbar;
+view(42, 28);
+camproj("perspective");
+axis tight;
+legend({"Estimate", "Truth"});
+title("Imaginary Channel Impulse Response");
+xlabel("Time [ms]");
+ylabel("Delay [T_c]");
+zlabel("Imaginary");
+set(gca, "FontSize", fontSize);
 
 figure(Name="Final Channel Tap Estimates", NumberTitle="off");
 hold on;
@@ -517,19 +522,33 @@ plot(real(channelStateRecord(forwardTapIndices, end)), ...
     imag(channelStateRecord(forwardTapIndices, end)), ...
     'o', 'LineWidth', lineWidth, 'MarkerSize', 8);
 for tapIndex = forwardTapIndices
-    text(real(channelStateRecord(tapIndex, end)), ...
-        imag(channelStateRecord(tapIndex, end)), ...
+    text(mean(real(channelStateRecord(tapIndex))), ...
+        mean(imag(channelStateRecord(tapIndex))), ...
         sprintf(" %+d", tapIndex - q - 1));
 end
 grid on;
 axis equal;
-legend({"Truth", "Final estimate"});
+legend({"Truth", "Mean estimate"});
 xlabel("Real");
 ylabel("Imaginary");
 set(gca, "FontSize", fontSize);
 hold off;
 
-VariationRecord = zeros(size(kalmanGainRecord, 1), simulationSteps);
-for i = 1:simulationSteps
-    VariationRecord(:,i) = kalmanGainRecord(:,:,i)*innovationRecord(:,i);
+% VariationRecord = zeros(size(kalmanGainRecord, 1), simulationSteps);
+% for i = 1:simulationSteps
+%     VariationRecord(:, i) = kalmanGainRecord(:, :, i) * innovationRecord(:, i);
+% end
+
+function shiftedCorrelations = getShiftedCorrelationsFromBank( ...
+    correlatorBank, delay, configuration, channelTapDelays)
+
+samplesPerEpoch = size(correlatorBank, 2);
+channelReplicas = zeros(numel(channelTapDelays), samplesPerEpoch);
+for col = 1:numel(channelTapDelays)
+    channelReplicas(col, :) = getCodeReplica( ...
+        configuration, delay + channelTapDelays(col)).';
+end
+
+shiftedCorrelations = correlatorBank * channelReplicas.';
+
 end
