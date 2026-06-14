@@ -33,7 +33,7 @@ configuration.addNoise = true;
 
 %% Multicorrelator Setup
 % Andreas Iliopoulos article, Section 4: P = 2L + 1 = 17 correlators.
-numberOfCorrelators = 17;
+numberOfCorrelators = 21;
 correlatorHalfSpan = (numberOfCorrelators - 1) / 2;
 q = correlatorHalfSpan;
 C = 2 * q + 1;
@@ -113,6 +113,7 @@ parameters.channelTapDelays = channelTapDelays;
 parameters.timeMs = timeMs;
 parameters.chipPeriod = chipPeriod;
 parameters.metricStartIndex = channelSummaryStartIndex;
+parameters.tapChannelCount = q + 1;
 
 %% Synthetic Channel, Delay Truth, and EKF Simulation
 % (Rodrigo): I configured this synthetic causal diffuse channel model in
@@ -310,7 +311,7 @@ nexttile;
 surf(timeGrid, tapDelayGrid, estimatedSurface, 'EdgeColor', 'none');
 hold on;
 surf(timeGrid, tapDelayGrid, trueSurface, ...
-    'FaceColor', [0.5 0.5 0.5], 'FaceAlpha', 0.85, ...
+    'FaceColor', [0.5 0.5 0.5], 'FaceAlpha', 0.5, ...
     'EdgeColor', 'none');
 hold off;
 grid on;
@@ -337,10 +338,18 @@ plot(real(trueChannel), imag(trueChannel), 'x', ...
 hold on;
 plot(real(estimatedChannel(:, end)), imag(estimatedChannel(:, end)), ...
     'o', 'LineWidth', lineWidth, 'MarkerSize', 8);
+% for tapIndex = 1:numel(tapNumbers)
+%     text(mean(real(estimatedChannel(tapIndex, :))), ...
+%         mean(imag(estimatedChannel(tapIndex, :))), ...
+%         sprintf(" %+d", tapNumbers(tapIndex)));
+% end
 for tapIndex = 1:numel(tapNumbers)
-    text(mean(real(estimatedChannel(tapIndex, :))), ...
-        mean(imag(estimatedChannel(tapIndex, :))), ...
-        sprintf(" %+d", tapNumbers(tapIndex)));
+    text(real(estimatedChannel(tapIndex, end)), ...
+        imag(estimatedChannel(tapIndex, end)), ...
+        sprintf(" %+d", tapNumbers(tapIndex)),  Color='#D64A12');
+
+    text(real(trueChannel(tapIndex)), imag(trueChannel(tapIndex)), ...
+        sprintf(" %+d", tapNumbers(tapIndex)),Color='blue');
 end
 hold off;
 grid on;

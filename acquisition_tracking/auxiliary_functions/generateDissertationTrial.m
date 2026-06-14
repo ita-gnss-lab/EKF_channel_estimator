@@ -12,7 +12,7 @@ trueDelayEpochRecord = parameters.trueDelay + ...
 configuration.codeDelay = ...
     repelem(trueDelayEpochRecord, parameters.samplesTotal).';
 
-numberOfCausalTruthTaps = parameters.q + 1;
+numberOfCausalTruthTaps = parameters.tapChannelCount;
 diffuseTapOrder = 1:(numberOfCausalTruthTaps - 1);
 diffusePowerProfile = exp(-0.7 * diffuseTapOrder);
 configuration.tdl_channel = zeros(1, numberOfCausalTruthTaps);
